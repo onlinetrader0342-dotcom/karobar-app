@@ -2,9 +2,16 @@
    Labels 100% English, currency Rs, no GST/tax fields. */
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const rs = (n) => "Rs " + Number(n || 0).toLocaleString("en-PK", {maximumFractionDigits: 0});
+const rs = (n) => "Rs " + Number(n || 0).toLocaleString("en-IN", {minimumFractionDigits: 2, maximumFractionDigits: 2});
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const waPhone = (p) => String(p || "").replace(/\D/g, "");
+const MON_S = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function fmtD(iso) {
+  if (!iso) return "";
+  const m = String(iso).slice(0, 10).match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return String(iso);
+  return `${m[3]} ${MON_S[+m[2] - 1]}, ${m[1].slice(2)}`;
+}
 
 /* ---------- inline SVG line icons (Vyapar-style, no emoji) ---------- */
 const _P = {
@@ -25,6 +32,31 @@ const _P = {
   plus: '<path d="M12 5v14"/><path d="M5 12h14"/>',
   x: '<path d="M18 6L6 18"/><path d="M6 6l12 12"/>',
   back: '<path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>',
+  store: '<path d="M3 9l1.5-5h15L21 9"/><path d="M3 9h18v2a3 3 0 0 1-3 3 3 3 0 0 1-3-3 3 3 0 0 1-3 3 3 3 0 0 1-3-3 3 3 0 0 1-3 3 3 3 0 0 1-3-3z"/><path d="M5 12v8h14v-8"/><path d="M9 20v-5h6v5"/>',
+  funnel: '<path d="M22 3H2l8 9.5V19l4 2v-8.5z"/>',
+  printer: '<path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>',
+  share: '<path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v13"/>',
+  shareCurve: '<path d="M13 5l7 7-7 7"/><path d="M20 12H9a5 5 0 0 0-5 5V4"/>',
+  dotsV: '<circle cx="12" cy="5" r="1.7" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r="1.7" fill="currentColor" stroke="none"/>',
+  chevR: '<path d="M9 18l6-6-6-6"/>',
+  chevD: '<path d="M6 9l6 6 6-6"/>',
+  chevU: '<path d="M18 15l-6-6-6 6"/>',
+  wallet: '<path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16V7"/><path d="M18 12a1.5 1.5 0 0 0 0 3h-2a1.5 1.5 0 0 1 0-3z"/>',
+  pct: '<path d="M19 5L5 19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/>',
+  arrDL: '<path d="M7 7l10 10"/><path d="M17 8v9H8"/>',
+  arrUR: '<path d="M7 17L17 7"/><path d="M8 7h9v9"/>',
+  plusCirc: '<circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="M8 12h8"/>',
+  clipboard: '<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 12h6"/><path d="M9 16h4"/>',
+  coins: '<ellipse cx="12" cy="6" rx="8" ry="3.5"/><path d="M4 6v6c0 1.9 3.6 3.5 8 3.5s8-1.6 8-3.5V6"/><path d="M4 12v6c0 1.9 3.6 3.5 8 3.5s8-1.6 8-3.5v-6"/>',
+  cheque: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 12h6"/><path d="M6 15h4"/><path d="M16 10v5"/>',
+  loan: '<circle cx="12" cy="12" r="10"/><path d="M19 5L5 19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/>',
+  rupee: '<circle cx="12" cy="12" r="10"/><path d="M9 7h7"/><path d="M9 11h7"/><path d="M9 7c4 0 5 1.5 5 4s-1 4-5 4l6 4"/>',
+  boxPlus: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M12 8v8"/><path d="M8 12h8"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+  pos: '<rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 9h4"/><path d="M7 12.5h7"/>',
+  receiptPlus: '<path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1z"/><path d="M12 7v6"/><path d="M9 10h6"/>',
+  clipboardPct: '<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 13h4"/><path d="M9 17h2"/><circle cx="16.5" cy="16.5" r="3.2" fill="#fff"/><path d="M18.3 14.7l-3.6 3.6"/><circle cx="15.4" cy="15.4" r=".6" fill="#2b3445" stroke="none"/><circle cx="17.6" cy="17.6" r=".6" fill="#2b3445" stroke="none"/>',
+  circleArrow: '<circle cx="12" cy="12" r="10"/><path d="M10 8l4 4-4 4"/>',
 };
 function ic(name, size) {
   const s = size || 22;
@@ -102,6 +134,7 @@ const RENDER = {};
 function go(view, arg) {
   document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
   $("" + view).classList.add("active");
+  document.body.classList.toggle("nosavenav", view === "v-sale-new" || view === "v-add-items");
   document.querySelectorAll("#bottom-nav button").forEach((b) =>
     b.classList.toggle("active", b.dataset.v === view));
   if (RENDER[view]) RENDER[view](arg);
@@ -114,73 +147,24 @@ function modal(html, cls) {
 }
 function closeModal() { $("modal-root").innerHTML = ""; }
 
-/* ---------- side drawer (hamburger) ---------- */
-const DRAWER_ITEMS = [
-  ["v-home", "home", "Home"],
-  ["v-sale", "receipt", "Sale"],
-  ["v-kharid", "cart", "Purchases"],
-  ["v-stock", "box", "Stock"],
-  ["v-khata", "ledger", "Ledger"],
-  ["v-challans", "truck", "Delivery Challans"],
-  ["v-banks", "bank", "Bank Accounts"],
-  ["v-reminders", "bell", "Payment Reminders"],
-  ["v-cash", "cash", "Cash Book"],
-  ["v-kharchay", "chart", "Expenses"],
-  ["v-reports", "chart", "Reports"],
-  ["v-settings", "sliders", "Settings"],
-];
-function buildDrawer() {
-  $("drawer-menu").innerHTML = DRAWER_ITEMS.map(([v, icn, t]) =>
-    `<div class="menu-item" onclick="closeDrawer();go('${v}')"><span class="ic">${ic(icn)}</span><div class="t">${t}</div></div>`).join("") +
-    `<div class="menu-item" onclick="logout()"><span class="ic">${ic("logout")}</span><div class="t">Logout</div></div>`;
+/* ---------- top header (Vyapar mobile) ---------- */
+function renderShopHeader() {
+  const nm = (SHOP && SHOP.name ? SHOP.name : "KAROBAR").toUpperCase();
+  $("shop-name").textContent = nm;
 }
-function openDrawer() { $("drawer").classList.add("open"); $("drawer-bg").classList.add("open"); }
-function closeDrawer() { $("drawer").classList.remove("open"); $("drawer-bg").classList.remove("open"); }
+function headFilter() {
+  const s = $("txn-search");
+  if (s && $("v-home").classList.contains("active")) { s.focus(); window.scrollTo(0, 0); }
+  else go("v-home");
+}
+function comingSoon(name) {
+  modal(`<h3>${esc(name)}</h3><div class="empty">This feature is coming soon.<br>We are building it for you.</div><button class="btn primary block" onclick="closeModal()">OK</button>`);
+}
+function toast(msg) {
+  modal(`<div class="empty" style="padding:18px">${esc(msg)}</div><button class="btn primary block" onclick="closeModal()">OK</button>`);
+}
 
 /* ================= HOME ================= */
-RENDER["v-home"] = async () => {
-  const v = $("v-home");
-  v.innerHTML = `<div class="card">Loading…</div>`;
-  try {
-    const d = await api("/reports/dashboard");
-    const low = d.low_stock.length
-      ? d.low_stock.map((p) => `<div class="kv"><span>⚠ ${esc(p.name)}</span><span class="num">${p.stock_qty} ${esc(p.unit || "")}</span></div>`).join("")
-      : `<div style="color:#6b7280;font-size:13px">All stock is fine</div>`;
-    const recent = (d.recent || []).length
-      ? d.recent.map((r) => `<div class="kv"><span style="display:inline-flex;align-items:center;gap:6px">${ic(r.kind === "bill" ? "receipt" : "cart", 16)} ${esc(r.ref)}${r.name ? " · " + esc(r.name) : ""}</span><span class="num">${rs(r.amount)}</span></div>`).join("")
-      : `<div style="color:#6b7280;font-size:13px">No transactions today</div>`;
-    v.innerHTML = `
-      <div class="quick-actions">
-        <button class="btn danger-fill" onclick="quickBill()">+ Add Sale</button>
-        <button class="btn blue" onclick="quickPurchase()">+ Add Purchase</button>
-      </div>
-      <div class="grid2">
-        <div class="stat"><span class="arrow" style="color:var(--success)">▼</span><div class="lbl">Total Receivable</div><div class="val green">${rs(d.kul_lena)}</div><div class="lbl">From customers</div></div>
-        <div class="stat"><span class="arrow" style="color:var(--danger)">▲</span><div class="lbl">Total Payable</div><div class="val red">${rs(d.kul_dena)}</div><div class="lbl">To suppliers</div></div>
-        <div class="stat"><div class="lbl">Today's Sales</div><div class="val primary">${rs(d.aaj_ki_sale)}</div><div class="lbl">${niceDate(todayISO())}</div></div>
-        <div class="stat"><div class="lbl">Today's Purchases</div><div class="val">${rs(d.aaj_ki_kharid)}</div><div class="lbl">${esc(SHOP ? SHOP.name : "Karobar")}</div></div>
-      </div>
-      <div style="height:12px"></div>
-      <div class="card">
-        <div class="row" style="justify-content:space-between"><h3 style="margin:0">Cash &amp; Bank</h3><button class="btn sm ghost" onclick="go('v-more')">See All</button></div>
-        <div class="grid2" style="margin-top:8px">
-          <div><div class="lbl">Bank Balance</div><div class="val" style="color:var(--primary-dark);font-size:18px;font-weight:700">${rs(d.bank_total || 0)}</div></div>
-          <div><div class="lbl">Cash in Hand</div><div class="val" style="color:${(d.cash_in_hand || 0) < 0 ? "var(--danger)" : "var(--success)"};font-size:18px;font-weight:700">${rs(d.cash_in_hand || 0)}</div></div>
-        </div>
-      </div>
-      <div class="card">
-        <div class="row" style="justify-content:space-between"><h3 style="margin:0">Most Used Reports</h3><button class="btn sm ghost" onclick="go('v-reports')">See All</button></div>
-        <div class="reptiles">
-          <button class="reptile" onclick="goReport('sale')">${ic("receipt", 26)}<span>Sales</span></button>
-          <button class="reptile" onclick="goReport('profit')">${ic("chart", 26)}<span>Profit</span></button>
-          <button class="reptile" onclick="goReport('stock')">${ic("box", 26)}<span>Stock</span></button>
-          <button class="reptile" onclick="goReport('outstanding')">${ic("ledger", 26)}<span>Dues</span></button>
-        </div>
-      </div>
-      <div class="card"><h3>Low Stock</h3>${low}</div>
-      <div class="card"><h3>Today's Activity</h3>${recent}</div>`;
-  } catch (e) { v.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
-};
 
 function goReport(sub) { REP_SUB = sub; go("v-reports"); }
 function quickBill() { SALE_TAB = "bills"; go("v-sale"); openDocForm("sale"); }
@@ -591,13 +575,13 @@ async function saveProduct(pid) {
   try {
     if (pid) await api("/products/" + pid, "PUT", body);
     else await api("/products", "POST", body);
-    closeModal(); RENDER["v-stock"]();
+    closeModal(); RENDER["v-items"]();
   } catch (e) { $("pf-err").textContent = e.message; }
 }
 
 async function deleteProduct(pid) {
   if (!confirm("Are you sure you want to delete?")) return;
-  try { await api("/products/" + pid, "DELETE"); closeModal(); RENDER["v-stock"](); }
+  try { await api("/products/" + pid, "DELETE"); closeModal(); RENDER["v-items"](); }
   catch (e) { $("pf-err").textContent = e.message; }
 }
 
@@ -620,7 +604,7 @@ async function saveAdjust(pid) {
   if (!qty) { $("ad-err").textContent = "Enter a quantity (+ or −)"; return; }
   try {
     await api("/products/" + pid + "/adjust", "POST", {qty_change: qty, note: $("ad-note").value.trim()});
-    closeModal(); RENDER["v-stock"]();
+    closeModal(); RENDER["v-items"]();
   } catch (e) { $("ad-err").textContent = e.message; }
 }
 
@@ -679,7 +663,7 @@ RENDER["v-cash"] = async () => {
           <div><div class="t">${esc(t.note || catLabel(t.category))}</div><div class="s">${esc(catLabel(t.category))}</div></div>
           <div class="t" style="color:${t.kind === "in" ? "#16a34a" : "#dc2626"}">${t.kind === "in" ? "+" : "−"} ${rs(t.amount)}</div>
         </div>`).join("") : `<div class="empty">No cash transactions on this date</div>`}
-      <button class="btn ghost block" onclick="go('v-more')">← Back</button>`;
+      <button class="btn ghost block" onclick="go('v-menu')">← Back</button>`;
   } catch (e) { v.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
 };
 
@@ -707,20 +691,6 @@ async function saveCash(kind) {
 }
 
 /* ================= AUR (menu) ================= */
-RENDER["v-more"] = async () => {
-  $("v-more").innerHTML = `
-    <div class="menu-item" onclick="go('v-khata')"><span class="ic">${ic("ledger")}</span><div class="t">Ledger (Customers / Suppliers)</div></div>
-    <div class="menu-item" onclick="go('v-challans')"><span class="ic">${ic("truck")}</span><div class="t">Delivery Challans</div></div>
-    <div class="menu-item" onclick="go('v-banks')"><span class="ic">${ic("bank")}</span><div class="t">Bank Accounts</div></div>
-    <div class="menu-item" onclick="go('v-reminders')"><span class="ic">${ic("bell")}</span><div class="t">Payment Reminders</div></div>
-    <div class="menu-item" onclick="go('v-cash')"><span class="ic">${ic("cash")}</span><div class="t">Cash Book</div></div>
-    <div class="menu-item" onclick="go('v-kharchay')"><span class="ic">${ic("chart")}</span><div class="t">Expenses</div></div>
-    <div class="menu-item" onclick="go('v-reports')"><span class="ic">${ic("chart")}</span><div class="t">Reports</div></div>
-    <div class="menu-item" onclick="go('v-settings')"><span class="ic">${ic("sliders")}</span><div class="t">Settings</div></div>
-    <div class="menu-item" onclick="logout()"><span class="ic">${ic("logout")}</span><div class="t">Logout</div></div>
-    <div style="text-align:center;color:#9ca3af;font-size:12px;margin-top:20px">Karobar v2.0</div>`;
-};
-
 /* ================= DELIVERY CHALLANS ================= */
 RENDER["v-challans"] = async () => {
   const v = $("v-challans");
@@ -736,7 +706,7 @@ RENDER["v-challans"] = async () => {
             ? `<span class="badge ok">BILLED</span>` : `<span class="badge info">OPEN</span>`}</div>
         </div>`).join("")
       : `<div class="empty">No delivery challans yet.<br>Tap + to create one.</div>`) +
-      `<button class="btn ghost block" onclick="go('v-more')">← Back</button>`;
+      `<button class="btn ghost block" onclick="go('v-menu')">← Back</button>`;
   } catch (e) { v.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
 };
 
@@ -865,7 +835,7 @@ RENDER["v-banks"] = async () => {
           <div class="t" style="color:${a.balance < 0 ? "var(--danger)" : "var(--primary-dark)"}">${rs(a.balance)}</div>
         </div>`).join("")
       : `<div class="empty">No bank accounts yet.<br>Tap + to add your first account.</div>`) +
-      `<button class="btn ghost block" onclick="go('v-more')">← Back</button>`;
+      `<button class="btn ghost block" onclick="go('v-menu')">← Back</button>`;
   } catch (e) { v.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
 };
 function openBankForm() {
@@ -951,7 +921,7 @@ RENDER["v-reminders"] = async () => {
           <button class="btn sm primary" style="margin-top:4px" onclick="remindOne(${i})"> Remind</button></div>
         </div>`).join("")
       : `<div class="empty"> Nobody owes you anything!</div>`) +
-      `<button class="btn ghost block" onclick="go('v-more')">← Back</button>`;
+      `<button class="btn ghost block" onclick="go('v-menu')">← Back</button>`;
   } catch (e) { v.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
 };
 function remindText(p) {
@@ -993,7 +963,7 @@ RENDER["v-khata"] = async () => {
           <div style="text-align:right"><div class="t" style="color:${p.balance > 0 ? "#dc2626" : "#16a34a"}">${rs(p.balance)}</div></div>
         </div>`).join("")
       : `<div class="empty">No ${KHATA_TYPE === "customer" ? "customers" : "suppliers"} yet.<br>Tap + to add.</div>`) +
-      `<button class="btn ghost block" onclick="go('v-more')">← Back</button>`;
+      `<button class="btn ghost block" onclick="go('v-menu')">← Back</button>`;
   } catch (e) { v.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
 };
 
@@ -1113,7 +1083,7 @@ RENDER["v-kharchay"] = async () => {
     <div id="kha-out"></div>
     <div class="row"><button class="btn danger grow" onclick="openCashForm('out')">+ New Expense</button></div>
     <div style="height:8px"></div>
-    <button class="btn ghost block" onclick="go('v-more')">← Back</button>`;
+    <button class="btn ghost block" onclick="go('v-menu')">← Back</button>`;
   loadKharchay();
 };
 function setKhaRange(days) {
@@ -1148,7 +1118,7 @@ RENDER["v-reports"] = async () => {
       ${REP_TABS.map((t) => `<button class="${REP_SUB === t[0] ? "active" : ""}" onclick="REP_SUB='${t[0]}';RENDER['v-reports']()">${t[1]}</button>`).join("")}
     </div>
     <div id="rep-out"></div>
-    <button class="btn ghost block" onclick="go('v-more')">← Back</button>`;
+    <button class="btn ghost block" onclick="go('v-menu')">← Back</button>`;
   loadReportSub();
 };
 function repRangeHTML() {
@@ -1250,7 +1220,7 @@ RENDER["v-settings"] = async () => {
         <label class="f">Receipt Header Text</label><input id="st-head" value="${esc(s.receipt_header || "")}" placeholder="E.g. Thank you!">
         <div class="err" id="st-err"></div>
         <button class="btn primary block" onclick="saveSettings()">Save</button></div>
-      <button class="btn ghost block" onclick="go('v-more')">← Back</button>`;
+      <button class="btn ghost block" onclick="go('v-menu')">← Back</button>`;
   } catch (e) { v.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
 };
 async function saveSettings() {
@@ -1258,10 +1228,482 @@ async function saveSettings() {
     await api("/settings", "PUT", {name: $("st-name").value.trim(), address: $("st-addr").value.trim(),
       phone: $("st-phone").value.trim(), receipt_header: $("st-head").value.trim()});
     SHOP = await api("/auth/me");
-    $("drawer-shop").textContent = SHOP.name;
+    renderShopHeader();
     $("st-err").textContent = "Saved";
     setTimeout(() => { $("st-err").textContent = ""; }, 2000);
   } catch (e) { $("st-err").textContent = e.message; }
+}
+
+/* ================= HOME (Vyapar mobile: Transaction Details / Party Details) ================= */
+let HOME_TAB = "txn";
+let TXN_Q = "";
+let _debT = null;
+
+function qlinkHTML(iconName, bg, label, fn) {
+  return `<button class="qlink" onclick="${fn}"><span class="qic"><span class="bg" style="background:${bg}"></span><svg class="glyph" viewBox="0 0 24 24" fill="none" stroke="#2b3445" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${_P[iconName] || ""}</svg></span><span>${label}</span></button>`;
+}
+
+const TXN_BADGE = {sale: ["sale", "Sale"], "payment-in": ["payin", "Payment-In"], "payment-out": ["payout", "Payment-Out"], purchase: ["purchase", "Purchase"]};
+
+RENDER["v-home"] = async () => {
+  const v = $("v-home");
+  v.innerHTML = `
+    <div class="seg">
+      <button class="${HOME_TAB === "txn" ? "active" : ""}" onclick="HOME_TAB='txn';RENDER['v-home']()">Transaction Details</button>
+      <button class="${HOME_TAB === "party" ? "active" : ""}" onclick="HOME_TAB='party';RENDER['v-home']()">Party Details</button>
+    </div>
+    <div id="home-body"><div class="card">Loading…</div></div>`;
+  if (HOME_TAB === "txn") renderTxnHome(); else renderPartyHome();
+};
+
+async function renderTxnHome() {
+  const box = $("home-body");
+  box.innerHTML = `
+    <div class="card"><h3>Quick Links</h3><div class="qlinks">
+      ${qlinkHTML("receiptPlus", "#f0564a", "Add Txn", "newSale()")}
+      ${qlinkHTML("clipboardPct", "#5aa9e6", "Sale Report", "goReport('sale')")}
+      ${qlinkHTML("gear", "#5aa9e6", "Txn Settings", "go('v-settings')")}
+      ${qlinkHTML("circleArrow", "#5aa9e6", "Show All", "showAllTxn()")}
+    </div></div>
+    <div class="srch"><span class="sicon">${ic("search", 22)}</span>
+      <input id="txn-search" placeholder="Search for a transaction" value="${esc(TXN_Q)}" autocomplete="off">
+      <button class="fbtn" onclick="toast('More filters coming soon')">${ic("funnel", 22)}</button>
+    </div>
+    <div id="txn-list"><div class="card">Loading…</div></div>
+    <div style="height:70px"></div>
+    <button class="fab-pill" onclick="newSale()">${ic("plus", 20)} Add New Sale</button>`;
+  const si = $("txn-search");
+  si.addEventListener("input", () => {
+    clearTimeout(_debT);
+    _debT = setTimeout(() => { TXN_Q = si.value.trim(); loadTxns(); }, 400);
+  });
+  loadTxns();
+}
+
+function showAllTxn() { TXN_Q = ""; RENDER["v-home"](); window.scrollTo(0, 0); }
+
+function txnRef(t) {
+  const num = parseInt(String(t.ref || "").replace(/[^0-9]/g, ""), 10);
+  return "#" + (isNaN(num) ? t.ref : num);
+}
+
+async function loadTxns() {
+  const box = $("txn-list");
+  if (!box) return;
+  try {
+    const txns = await api("/transactions?q=" + encodeURIComponent(TXN_Q));
+    if (!txns.length) { box.innerHTML = `<div class="empty">No transactions found.</div>`; return; }
+    box.innerHTML = txns.map((t) => {
+      const [bc, bl] = TXN_BADGE[t.kind] || ["sale", t.kind];
+      const lab2 = (t.kind === "sale" || t.kind === "purchase") ? "Balance" : "Unused";
+      return `<div class="txn" onclick="openTxn('${t.kind}', ${t.doc_id}, ${t.party_id || 0})">
+        <div class="r1"><div class="pname">${esc(t.party_name)}</div>
+        <div class="ref">${esc(txnRef(t))}<br>${fmtD(t.date)}</div></div>
+        <span class="badge ${bc}">${bl}</span>
+        <div class="r2"><div class="amt2">
+          <div><div class="lab">Total</div><div class="val">${rs(t.total)}</div></div>
+          <div><div class="lab">${lab2}</div><div class="val">${rs(t.balance)}</div></div>
+        </div><div class="acts">
+          <button onclick="event.stopPropagation();txnPrint('${t.kind}',${t.doc_id})" aria-label="Print">${ic("printer", 22)}</button>
+          <button onclick="event.stopPropagation();txnShare('${t.kind}',${t.doc_id})" aria-label="Share">${ic("shareCurve", 22)}</button>
+          <button onclick="event.stopPropagation();txnMore('${t.kind}',${t.doc_id},${t.party_id || 0})" aria-label="More">${ic("dotsV", 22)}</button>
+        </div></div>
+      </div>`;
+    }).join("");
+  } catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
+}
+
+function openTxn(kind, docId, partyId) {
+  if (kind === "sale") go("v-bill-detail", docId);
+  else if (kind === "purchase") go("v-kharid-detail", docId);
+  else if (partyId) go("v-party", partyId);
+}
+
+function printWin(html) {
+  const w = window.open("", "_blank");
+  w.document.write("<html><head><title>Print</title></head><body style='font-family:sans-serif'>" + html + "<scr" + "ipt>window.onload=function(){window.print()}</scr" + "ipt></body></html>");
+  w.document.close();
+}
+
+async function txnPrint(kind, id) {
+  try {
+    let d;
+    if (kind === "sale") d = await api("/bills/" + id);
+    else if (kind === "purchase") d = await api("/purchases/" + id);
+    else return;
+    const s = d.shop || SHOP || {};
+    printWin(docPaperHTML(s, d.bill_no, d.date, d.party_name, d.items || [], d.subtotal || 0, d.discount || 0, d.total || 0, d.paid == null ? null : d.paid, (d.total || 0) - (d.paid || 0), d.mode));
+  } catch (e) { toast(e.message); }
+}
+
+async function txnShare(kind, id) {
+  try {
+    let txt;
+    if (kind === "sale") {
+      const b = await api("/bills/" + id);
+      txt = waDocText(b.shop || {}, b.bill_no, b.date, b.items || [], b.total, b.paid, (b.total || 0) - (b.paid || 0));
+    } else if (kind === "purchase") {
+      const p = await api("/purchases/" + id);
+      txt = `${((p.shop || {}).name) || ""}\nPurchase: ${p.bill_no} | ${fmtD(p.date)}\nTotal: Rs ${p.total}\nPaid: Rs ${p.paid}`;
+    } else {
+      const ts = await api("/transactions");
+      const t = ts.find((x) => x.kind === kind && x.doc_id === id);
+      txt = t ? `${t.kind === "payment-in" ? "Payment received" : "Payment paid"}: ${rs(t.total)} — ${t.party_name} (${fmtD(t.date)})` : "Payment";
+    }
+    window.open("https://wa.me/?text=" + encodeURIComponent(txt), "_blank");
+  } catch (e) { toast(e.message); }
+}
+
+function txnMore(kind, docId, partyId) {
+  modal(`<h3>Options</h3>
+    <button class="btn ghost block" onclick="closeModal();openTxn('${kind}',${docId},${partyId})">View Details</button>
+    ${partyId ? `<button class="btn ghost block" onclick="closeModal();go('v-party',${partyId})">View Party</button>` : ""}
+    <button class="btn primary block" onclick="closeModal()">Close</button>`);
+}
+
+async function renderPartyHome() {
+  const box = $("home-body");
+  box.innerHTML = `
+    <div class="srch"><span class="sicon">${ic("search", 22)}</span>
+      <input id="party-search" placeholder="Search for a party" autocomplete="off">
+      <button class="fbtn" onclick="toast('More filters coming soon')">${ic("funnel", 22)}</button>
+    </div>
+    <div id="party-list"><div class="card">Loading…</div></div>`;
+  const si = $("party-search");
+  let pq = "";
+  si.addEventListener("input", () => {
+    clearTimeout(_debT);
+    _debT = setTimeout(() => { pq = si.value.trim(); loadParties(pq); }, 400);
+  });
+  loadParties("");
+}
+
+async function loadParties(q) {
+  const box = $("party-list");
+  if (!box) return;
+  try {
+    const ps = await api("/parties");
+    const ql = q.toLowerCase();
+    const list = ps.filter((p) => !ql || p.name.toLowerCase().includes(ql) || (p.phone || "").includes(ql));
+    box.innerHTML = list.length ? list.map((p) => `
+      <div class="list-item" onclick="go('v-party', ${p.id})">
+        <div><div class="t">${esc(p.name)}</div><div class="s">${p.type === "customer" ? "Customer" : "Supplier"}${p.phone ? " · " + esc(p.phone) : ""}</div></div>
+        <div class="t" style="color:${(p.balance || 0) > 0 ? "#e63956" : "#1db954"}">${rs(p.balance || 0)}</div>
+      </div>`).join("") : `<div class="empty">No parties found.</div>`;
+  } catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
+}
+
+/* ================= DASHBOARD ================= */
+function reportSVG() {
+  return `<svg width="104" height="112" viewBox="0 0 110 120">
+    <circle cx="58" cy="60" r="52" fill="#1a6fd4"/>
+    <rect x="36" y="34" width="44" height="56" rx="4" fill="#fff"/>
+    <rect x="42" y="42" width="20" height="6" rx="2" fill="#1a9bd4"/>
+    <rect x="42" y="52" width="32" height="4" rx="2" fill="#c9d8ec"/>
+    <rect x="42" y="60" width="32" height="4" rx="2" fill="#c9d8ec"/>
+    <rect x="42" y="68" width="22" height="4" rx="2" fill="#c9d8ec"/>
+    <circle cx="72" cy="80" r="9" fill="#f5b301"/><path d="M67 80h10" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
+    <circle cx="88" cy="28" r="11" fill="#fff"/><path d="M88 23v10M83 28h10" stroke="#1db954" stroke-width="2.5" stroke-linecap="round"/>
+    <circle cx="94" cy="56" r="9" fill="#fff"/><path d="M90 56h8" stroke="#e63956" stroke-width="2.5" stroke-linecap="round"/>
+  </svg>`;
+}
+
+function chartSVG(ms) {
+  const W = 300, H = 96;
+  const vals = ms.map((m) => m.sale || 0);
+  const max = Math.max(...vals, 1);
+  const n = vals.length;
+  const pts = vals.map((val, i) => {
+    const x = n === 1 ? W / 2 : 16 + (i * (W - 32)) / (n - 1);
+    const y = H - 12 - ((val / max) * (H - 32));
+    return [x.toFixed(1), y.toFixed(1)];
+  });
+  const line = pts.map((p) => p.join(",")).join(" ");
+  const dots = pts.map((p) => `<circle cx="${p[0]}" cy="${p[1]}" r="4.5" fill="#1a9bd4" stroke="#fff" stroke-width="2"/>`).join("");
+  const labels = ms.map((m, i) => `<text x="${pts[i][0]}" y="${H + 15}" font-size="13" fill="#8a93a6" text-anchor="middle">${m.label}</text>`).join("");
+  return `<svg viewBox="0 0 ${W} ${H + 22}" style="width:100%;margin-top:10px"><line x1="0" y1="${H - 10}" x2="${W}" y2="${H - 10}" stroke="#d5dbe5" stroke-dasharray="5,4"/><polyline points="${line}" fill="none" stroke="#1a9bd4" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>${dots}${labels}</svg>`;
+}
+
+RENDER["v-dashboard"] = async () => {
+  const v = $("v-dashboard");
+  v.innerHTML = `<div class="card">Loading…</div>`;
+  try {
+    const [d, ms] = await Promise.all([api("/reports/dashboard"), api("/reports/monthly-sales?months=3")]);
+    const cur = ms[ms.length - 1] || {label: "", sale: 0, purchase: 0, expense: 0};
+    const prev = ms[ms.length - 2] || {sale: 0};
+    const pct = prev.sale > 0 ? Math.round(((cur.sale - prev.sale) / prev.sale) * 100) : 0;
+    const up = pct >= 0;
+    v.innerHTML = `
+      <div class="banner"><div class="bt">
+        <h3>Karobar Reports</h3>
+        <p>View more than <b>50 reports</b> and gain full control of your business…</p>
+        <button class="pillbtn" onclick="go('v-reports')">See Reports</button>
+      </div>${reportSVG()}</div>
+      <div class="getgive">
+        <div class="gg"><div class="top"><span class="circ g">${ic("arrDL", 18)}</span>You'll Get</div><div class="amt">${rs(d.kul_lena)}</div></div>
+        <div class="gg"><div class="top"><span class="circ r">${ic("arrUR", 18)}</span>You'll Give</div><div class="amt">${rs(d.kul_dena)}</div></div>
+      </div>
+      <div class="card ov"><h3>Your Sale Overview (${esc(cur.label)})</h3>
+        <div class="big"><div class="lab">Total Sale</div><div class="amt">${rs(cur.sale)}</div>
+        <div class="chg"><span class="down">${ic(up ? "arrUR" : "arrDL", 14)}</span>${Math.abs(pct)}% ${up ? "Growth" : "Decline"} This Month</div></div>
+        ${chartSVG(ms)}
+      </div>
+      <div class="getgive">
+        <div class="gg"><div class="top">Purchases (${esc(cur.label)})</div><div class="amt">${rs(cur.purchase)}</div></div>
+        <div class="gg"><div class="top">Expenses (${esc(cur.label)})</div><div class="amt">${rs(cur.expense)}</div></div>
+      </div>
+      <div class="card"><h3>Cash &amp; Bank</h3>
+        <div class="kv"><span>Bank Balance</span><b style="color:#1280b3">${rs(d.bank_total || 0)}</b></div>
+        <div class="kv"><span>Cash in Hand</span><b style="color:${(d.cash_in_hand || 0) < 0 ? "#e63956" : "#1db954"}">${rs(d.cash_in_hand || 0)}</b></div>
+      </div>`;
+  } catch (e) { v.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
+};
+
+/* ================= ITEMS ================= */
+let ITEM_Q = "";
+let ITEM_LOWONLY = false;
+
+RENDER["v-items"] = async () => {
+  const v = $("v-items");
+  v.innerHTML = `
+    <div class="card"><h3>Quick Links</h3><div class="qlinks">
+      ${qlinkHTML("store", "#5aa9e6", "Online Store", "comingSoon('Online Store')")}
+      ${qlinkHTML("box", "#5aa9e6", "Stock Summary", "goReport('stock')")}
+      ${qlinkHTML("gear", "#5aa9e6", "Item Settings", "go('v-settings')")}
+      ${qlinkHTML("circleArrow", "#5aa9e6", "Show All", "showAllItems()")}
+    </div></div>
+    <div style="display:flex;gap:0;margin-bottom:12px">
+      <div class="srch" style="flex:1;margin-bottom:0"><span class="sicon">${ic("search", 22)}</span>
+        <input id="item-search" placeholder="Search for an item or code" value="${esc(ITEM_Q)}" autocomplete="off">
+        <button class="fbtn" onclick="toast('More filters coming soon')">${ic("funnel", 22)}</button>
+      </div>
+      <button class="mbox" onclick="ITEM_LOWONLY=!ITEM_LOWONLY;RENDER['v-items']()" style="${ITEM_LOWONLY ? "color:#e63956" : ""}" aria-label="Options">${ic("dotsV", 22)}</button>
+    </div>
+    <div id="item-list"><div class="card">Loading…</div></div>
+    <div style="height:70px"></div>
+    <button class="fab-pill" onclick="openProductForm()">${ic("box", 20)} Add New Item</button>`;
+  const si = $("item-search");
+  si.addEventListener("input", () => {
+    clearTimeout(_debT);
+    _debT = setTimeout(() => { ITEM_Q = si.value.trim(); loadItems(); }, 400);
+  });
+  loadItems();
+};
+
+function showAllItems() { ITEM_Q = ""; ITEM_LOWONLY = false; RENDER["v-items"](); }
+
+async function loadItems() {
+  const box = $("item-list");
+  if (!box) return;
+  try {
+    const ps = await api("/products");
+    window._items = ps;
+    const ql = ITEM_Q.toLowerCase();
+    const list = ps.filter((p) =>
+      (!ql || p.name.toLowerCase().includes(ql) || (p.sku || "").toLowerCase().includes(ql)) &&
+      (!ITEM_LOWONLY || (p.stock_qty || 0) <= (p.low_stock_level || 0)));
+    box.innerHTML = list.length ? list.map((p) => `
+      <div class="icard" onclick="openProductForm(${p.id})">
+        <div class="r1"><div class="nm">${esc(p.name)}</div>
+          ${p.sku ? `<span class="badge cat">${esc(p.sku)}</span>` : ""}
+          <button class="share" onclick="event.stopPropagation();shareItem(${p.id})" aria-label="Share">${ic("shareCurve", 22)}</button>
+        </div>
+        <div class="r2">
+          <div><div class="lab">Sale Price</div><div class="v">${rs(p.sale_price)}</div></div>
+          <div><div class="lab">Purchase Price</div><div class="v">${rs(p.purchase_price)}</div></div>
+          <div><div class="lab">In Stock</div><div class="v stockok">${Number(p.stock_qty || 0).toLocaleString("en-IN")}</div></div>
+        </div>
+      </div>`).join("") : `<div class="empty">No items found.</div>`;
+  } catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
+}
+
+function shareItem(pid) {
+  const p = (window._items || []).find((x) => x.id === pid);
+  if (!p) return;
+  window.open("https://wa.me/?text=" + encodeURIComponent(`${p.name}\nSale Price: ${rs(p.sale_price)}\nIn Stock: ${p.stock_qty}`), "_blank");
+}
+
+/* ================= MENU ================= */
+let MENU_OPEN = null;
+
+RENDER["v-menu"] = async () => {
+  const v = $("v-menu");
+  const sub = (label, fn, soon) => `
+    <div class="mrow sub" onclick="${soon ? `comingSoon('${label}')` : fn}">
+      <div class="t">${label}</div>${soon ? `<span class="soon">Coming Soon</span>` : ""}
+      <span class="chev">${ic("chevR", 20)}</span></div>`;
+  const mrowX = (iconName, label, inner) => `
+    <div class="mrow" onclick="MENU_OPEN=MENU_OPEN==='${label}'?null:'${label}';RENDER['v-menu']()">
+      <span class="mi">${ic(iconName, 24)}</span><div class="t">${label}</div>
+      <span class="chev">${ic(inner ? "chevU" : "chevD", 22)}</span></div>
+    ${inner || ""}`;
+  const mrowGo = (iconName, label, fn, soon) => `
+    <div class="mrow" onclick="${soon ? `comingSoon('${label}')` : fn}">
+      <span class="mi">${ic(iconName, 24)}</span><div class="t">${label}</div>
+      ${soon ? `<span class="soon">Coming Soon</span>` : ""}
+      <span class="chev">${ic("chevR", 22)}</span></div>`;
+  const saleSubs = `
+    ${sub("Sale Invoice", "newSale()")}
+    ${sub("Payment-In", "goCustomers()")}
+    ${sub("Sale Return (Credit Note)", "", true)}
+    ${sub("Estimate/Quotation", "goSaleEstimates()")}
+    ${sub("Sale Order", "", true)}
+    ${sub("Delivery Note", "go('v-challans')")}
+    ${sub("Mobile POS", "", true)}`;
+  const purSubs = `
+    ${sub("Purchase Bill", "go('v-kharid');openDocForm('purchase')")}
+    ${sub("Payment-Out", "goSuppliers()")}
+    ${sub("Purchase Order", "", true)}
+    ${sub("Purchase Return", "", true)}`;
+  const storeSubs = `${sub("Store Setup", "", true)}`;
+  v.innerHTML = `
+    <div class="card"><h3>My Business</h3>
+      ${mrowX("coins", "Sale", MENU_OPEN === "Sale" ? saleSubs : "")}
+      ${mrowX("cart", "Purchase", MENU_OPEN === "Purchase" ? purSubs : "")}
+      ${mrowGo("wallet", "Expenses", "go('v-kharchay')")}
+      ${mrowX("store", "My Online Store", MENU_OPEN === "My Online Store" ? storeSubs : "")}
+      ${mrowGo("clipboard", "Reports", "go('v-reports')")}
+      ${mrowGo("rupee", "Loyalty Points", "", true)}
+    </div>
+    <div class="card"><h3>Cash &amp; Bank</h3>
+      ${mrowGo("bank", "Bank Accounts", "go('v-banks')")}
+      ${mrowGo("wallet", "Cash In-Hand", "go('v-cash')")}
+      ${mrowGo("cheque", "Cheques", "", true)}
+      ${mrowGo("loan", "Loan Accounts", "", true)}
+    </div>
+    <div class="card"><h3>More</h3>
+      ${mrowGo("bell", "Payment Reminders", "go('v-reminders')")}
+      ${mrowGo("sliders", "Settings", "go('v-settings')")}
+      ${mrowGo("logout", "Logout", "logout()")}
+    </div>`;
+};
+
+function goSaleEstimates() { SALE_TAB = "estimates"; go("v-sale"); }
+function goCustomers() { KHATA_TYPE = "customer"; go("v-khata"); }
+function goSuppliers() { KHATA_TYPE = "supplier"; go("v-khata"); }
+
+/* ================= SALE INVOICE (Vyapar mobile) ================= */
+let SALE = null;
+
+async function newSale() {
+  try {
+    const [products, parties] = await Promise.all([api("/products"), api("/parties?type=customer")]);
+    SALE = {mode: "credit", party_id: null, party_name: "", items: [], date: todayISO(), products, parties};
+    go("v-sale-new");
+  } catch (e) { toast(e.message); }
+}
+
+function saleTotal() { return (SALE.items || []).reduce((s, it) => s + it.qty * it.price, 0); }
+function saleDelItem(i) { SALE.items.splice(i, 1); RENDER["v-sale-new"](); }
+function saleCust(v) {
+  SALE.party_name = v.trim();
+  const p = (SALE.parties || []).find((x) => x.name.toLowerCase() === SALE.party_name.toLowerCase());
+  SALE.party_id = p ? p.id : null;
+}
+
+RENDER["v-sale-new"] = async () => {
+  const v = $("v-sale-new");
+  if (!SALE) { newSale(); return; }
+  v.classList.add("paddedsave");
+  const total = saleTotal();
+  const itemsHtml = SALE.items.length ? SALE.items.map((it, i) => `
+    <div class="kv"><span>${esc(it.product_name)}<br><span style="color:#8a93a6;font-size:12px">${it.qty} × ${rs(it.price)}</span></span>
+    <span style="display:flex;align-items:center;gap:8px"><b>${rs(it.qty * it.price)}</b><button onclick="saleDelItem(${i})" style="border:0;background:none;color:#e63956;font-size:16px;cursor:pointer">✕</button></span></div>`).join("")
+    : `<div class="empty" style="padding:12px">No items added yet</div>`;
+  v.innerHTML = `
+    <div class="shead">
+      <button class="back" onclick="go('v-home')">${ic("back", 24)}</button>
+      <h2>Sale</h2>
+      <div class="cc-toggle">
+        <button class="${SALE.mode === "credit" ? "on" : ""}" onclick="SALE.mode='credit';RENDER['v-sale-new']()">Credit</button>
+        <button class="${SALE.mode === "cash" ? "on" : ""}" onclick="SALE.mode='cash';RENDER['v-sale-new']()">Cash</button>
+      </div>
+      <button class="gear" onclick="go('v-settings')">${ic("gear", 24)}</button>
+    </div>
+    <div style="height:12px"></div>
+    <div class="invrow">
+      <div class="cell"><div class="lab">Invoice No.</div><div class="val">Auto</div></div>
+      <div class="cell"><div class="lab">Date</div><input type="date" id="sale-date" value="${SALE.date}" onchange="SALE.date=this.value;RENDER['v-sale-new']()" style="border:0;background:none;font-size:16px;padding:2px 0;color:#2b3445"></div>
+    </div>
+    <div style="height:14px"></div>
+    <input class="finput" id="sale-cust" list="sale-cust-list" placeholder="Customer *" value="${esc(SALE.party_name)}" onchange="saleCust(this.value)" autocomplete="off">
+    <datalist id="sale-cust-list">${(SALE.parties || []).map((p) => `<option value="${esc(p.name)}">`).join("")}</datalist>
+    <div style="height:12px"></div>
+    ${itemsHtml}
+    <div style="height:12px"></div>
+    <button class="additems" onclick="go('v-add-items')"><span class="pcirc">${ic("plus", 16)}</span> Add Items <span class="opt">(Optional)</span></button>
+    <div class="totalrow"><span>Total Amount</span><span class="rs">Rs ${Number(total).toLocaleString("en-IN", {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span></div>
+    <div class="savebar">
+      <button class="sn" onclick="saveSale(true)">Save &amp; New</button>
+      <button class="sv" onclick="saveSale(false)">Save</button>
+      <button class="dots" onclick="toast('More options coming soon')">${ic("dotsV", 22)}</button>
+    </div>`;
+};
+
+async function saveSale(andNew) {
+  if (!SALE.items.length) { toast("Add an item first"); return; }
+  const total = saleTotal();
+  try {
+    const items = [];
+    for (const it of SALE.items) {
+      let pid = it.product_id;
+      if (!pid) {
+        const np = await api("/products", "POST", {name: it.product_name, sku: "", purchase_price: it.price, sale_price: it.price, stock_qty: 0, low_stock_level: 0, unit: it.unit || "pcs", barcode: "", expiry_date: "", category: ""});
+        pid = np.id;
+      }
+      items.push({product_id: pid, qty: it.qty, price: it.price});
+    }
+    const b = await api("/bills", "POST", {
+      party_id: SALE.party_id, party_name: SALE.party_name,
+      items, discount: 0,
+      paid: SALE.mode === "cash" ? total : 0, mode: "cash", date: SALE.date,
+    });
+    if (andNew) newSale(); else go("v-bill-detail", b.id);
+  } catch (e) { toast(e.message); }
+}
+
+/* ================= ADD ITEMS TO SALE ================= */
+RENDER["v-add-items"] = async () => {
+  const v = $("v-add-items");
+  if (!SALE) { newSale(); return; }
+  v.classList.add("paddedsave");
+  v.innerHTML = `
+    <div class="shead">
+      <button class="back" onclick="go('v-sale-new')">${ic("back", 24)}</button>
+      <h2 style="font-size:20px">Add Items to Sale</h2>
+      <button class="gear" onclick="go('v-settings')">${ic("gear", 24)}</button>
+    </div>
+    <div style="height:18px"></div>
+    <div class="flabel"><span>Item Name</span>
+      <input class="finput" id="ai-name" list="ai-list" placeholder="e.g. Chocolate Cake" autocomplete="off">
+      <datalist id="ai-list">${(SALE.products || []).map((p) => `<option value="${esc(p.name)}">`).join("")}</datalist>
+    </div>
+    <div class="row">
+      <div class="flabel grow"><span class="dim">Quantity</span><input class="finput" id="ai-qty" type="number" min="0" step="any" placeholder="Quantity" inputmode="decimal"></div>
+      <div class="flabel grow"><span class="dim">Unit</span>
+        <select class="finput" id="ai-unit"><option>pcs</option><option>kg</option><option>mtr</option><option>box</option><option>ltr</option><option>ft</option></select></div>
+    </div>
+    <div class="flabel"><span class="dim">Rate (Price/Unit)</span><input class="finput" id="ai-rate" type="number" min="0" step="any" placeholder="Rate (Price/Unit)" inputmode="decimal"></div>
+    <div class="savebar">
+      <button class="sn" onclick="addItem(true)">Save &amp; New</button>
+      <button class="sv red" onclick="addItem(false)">Save</button>
+    </div>`;
+  const nm = $("ai-name");
+  nm.addEventListener("input", () => {
+    const p = (SALE.products || []).find((x) => x.name.toLowerCase() === nm.value.trim().toLowerCase());
+    if (p && !$("ai-rate").value) $("ai-rate").value = p.sale_price;
+  });
+  setTimeout(() => nm.focus(), 300);
+};
+
+function addItem(andNew) {
+  const name = $("ai-name").value.trim();
+  const qty = parseFloat($("ai-qty").value) || 0;
+  const rate = parseFloat($("ai-rate").value) || 0;
+  if (!name || qty <= 0) { toast("Enter item name and quantity"); return; }
+  const p = (SALE.products || []).find((x) => x.name.toLowerCase() === name.toLowerCase());
+  SALE.items.push({product_id: p ? p.id : null, product_name: name, qty, price: rate, unit: $("ai-unit").value});
+  if (andNew) RENDER["v-add-items"](); else go("v-sale-new");
 }
 
 /* ================= BOOT ================= */
@@ -1275,8 +1717,7 @@ async function boot() {
   }
   $("auth-screen").style.display = "none";
   $("app-screen").style.display = "";
-  $("drawer-shop").textContent = SHOP.name;
-  buildDrawer();
+  renderShopHeader();
   go("v-home");
 }
 
