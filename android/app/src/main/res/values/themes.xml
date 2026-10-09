@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Theme-based splash: shown while the WebView boots -->
+    <style name="Theme.Karobar.Splash" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@drawable/splash_bg</item>
+        <item name="android:statusBarColor">@color/karobar_teal_dark</item>
+        <item name="android:navigationBarColor">@color/karobar_teal_dark</item>
+    </style>
+    <style name="Theme.Karobar" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@android:color/white</item>
+        <item name="android:statusBarColor">@color/karobar_teal_dark</item>
+        <item name="android:navigationBarColor">@android:color/white</item>
+    </style>
+</resources>

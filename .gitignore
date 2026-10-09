@@ -5,3 +5,7 @@ __pycache__/
 *.db-journal
 .DS_Store
 design-refs/
+android/build/
+android/.gradle/
+android/app/build/
+*.apk
