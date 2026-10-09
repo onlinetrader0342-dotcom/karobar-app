@@ -121,23 +121,17 @@ RENDER["v-home"] = async () => {
       ? d.recent.map((r) => `<div class="kv"><span>${r.kind === "bill" ? "🧾" : "🛒"} ${esc(r.ref)}${r.name ? " · " + esc(r.name) : ""}</span><span class="num">${rs(r.amount)}</span></div>`).join("")
       : `<div style="color:#6b7280;font-size:13px">No transactions today</div>`;
     v.innerHTML = `
-      <div class="card" style="background:var(--teal);color:#fff">
-        <div style="font-size:13px;opacity:.9">📅 ${niceDate(todayISO())}</div>
-        <div style="font-size:20px;font-weight:800;margin-top:4px">${esc(SHOP ? SHOP.name : "Karobar")}</div>
+      <div class="quick-actions">
+        <button class="btn danger-fill" onclick="quickBill()">+ Add Sale</button>
+        <button class="btn primary" onclick="quickPurchase()">+ Add Purchase</button>
       </div>
       <div class="grid2">
-        <div class="stat"><div class="lbl">Today's Sales</div><div class="val teal">${rs(d.aaj_ki_sale)}</div></div>
-        <div class="stat"><div class="lbl">Today's Purchases</div><div class="val">${rs(d.aaj_ki_kharid)}</div></div>
-        <div class="stat"><div class="lbl">Receivable from Customers</div><div class="val green">${rs(d.kul_lena)}</div></div>
-        <div class="stat"><div class="lbl">Payable to Suppliers</div><div class="val red">${rs(d.kul_dena)}</div></div>
+        <div class="stat"><span class="arrow" style="color:var(--success)">▼</span><div class="lbl">Total Receivable</div><div class="val green">${rs(d.kul_lena)}</div><div class="lbl">From customers</div></div>
+        <div class="stat"><span class="arrow" style="color:var(--danger)">▲</span><div class="lbl">Total Payable</div><div class="val red">${rs(d.kul_dena)}</div><div class="lbl">To suppliers</div></div>
+        <div class="stat"><div class="lbl">Today's Sales</div><div class="val primary">${rs(d.aaj_ki_sale)}</div><div class="lbl">📅 ${niceDate(todayISO())}</div></div>
+        <div class="stat"><div class="lbl">Today's Purchases</div><div class="val">${rs(d.aaj_ki_kharid)}</div><div class="lbl">${esc(SHOP ? SHOP.name : "Karobar")}</div></div>
       </div>
       <div style="height:12px"></div>
-      <div class="quick-row">
-        <button class="quick" onclick="quickBill()"><span class="ic">🧾</span>+ New Bill</button>
-        <button class="quick" onclick="quickPurchase()"><span class="ic">🛒</span>+ Purchase Bill</button>
-        <button class="quick" onclick="openQuickPayment()"><span class="ic">💰</span>Collect</button>
-        <button class="quick" onclick="openCashForm('out')"><span class="ic">💸</span>Expense</button>
-      </div>
       <div class="card"><h3>⚠️ Low Stock</h3>${low}</div>
       <div class="card"><h3>🕘 Today's Activity</h3>${recent}</div>`;
   } catch (e) { v.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
