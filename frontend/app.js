@@ -1,8 +1,21 @@
-/* Karobar PWA — Phase 1 MVP. Sab labels Roman Urdu, currency Rs. */
+/* Karobar PWA — full rewrite. Sirf frontend, sab hisab backend karta hai.
+   Labels 100% Roman Urdu, currency Rs, koi GST/tax field nahi. */
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rs = (n) => "Rs " + Number(n || 0).toLocaleString("en-PK", {maximumFractionDigits: 0});
 const todayISO = () => new Date().toISOString().slice(0, 10);
+const waPhone = (p) => String(p || "").replace(/\D/g, "");
+
+const DAYS_UR = ["Itwaar", "Peer", "Mangal", "Budh", "Jumeiraat", "Jumma", "Hafta"];
+const MONTHS_UR = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+function niceDate(iso) {
+  if (!iso) return "";
+  const d = new Date(String(iso).slice(0, 10) + "T00:00:00");
+  if (isNaN(d)) return String(iso);
+  return DAYS_UR[d.getDay()] + ", " + d.getDate() + " " + MONTHS_UR[d.getMonth()] + " " + d.getFullYear();
+}
+const MODES = [["cash", "Cash"], ["bank", "Bank"], ["online", "Online (JazzCash/Easypaisa)"]];
+function modeLabel(m) { const f = MODES.find((x) => x[0] === m); return f ? f[1] : (m || ""); }
 
 let TOKEN = localStorage.getItem("karobar_token") || "";
 let SHOP = null;
@@ -73,7 +86,7 @@ function modal(html) {
 }
 function closeModal() { $("modal-root").innerHTML = ""; }
 
-/* ---------- home / dashboard ---------- */
+/* ================= HOME ================= */
 RENDER["v-home"] = async () => {
   const v = $("v-home");
   v.innerHTML = `<div class="card">Load ho raha hai…</div>`;
@@ -82,132 +95,236 @@ RENDER["v-home"] = async () => {
     const low = d.low_stock.length
       ? d.low_stock.map((p) => `<div class="kv"><span>⚠️ ${esc(p.name)}</span><span class="num">${p.stock_qty} ${esc(p.unit || "")}</span></div>`).join("")
       : `<div style="color:#6b7280;font-size:13px">Sab stock theek hai 👍</div>`;
+    const recent = (d.recent || []).length
+      ? d.recent.map((r) => `<div class="kv"><span>${r.kind === "bill" ? "🧾" : "🛒"} ${esc(r.ref)}${r.name ? " · " + esc(r.name) : ""}</span><span class="num">${rs(r.amount)}</span></div>`).join("")
+      : `<div style="color:#6b7280;font-size:13px">Aaj koi len-den nahi</div>`;
     v.innerHTML = `
-      <div class="card"><h3>Aaj ka khulasa (${todayISO()})</h3>
-        <div class="grid2">
-          <div class="stat"><div class="lbl">Aaj ki Sale</div><div class="val teal">${rs(d.aaj_ki_sale)}</div></div>
-          <div class="stat"><div class="lbl">Aaj ka Kharcha</div><div class="val red">${rs(d.aaj_ka_kharcha)}</div></div>
-          <div class="stat"><div class="lbl">Gahakon se Lena</div><div class="val green">${rs(d.kul_lena)}</div></div>
-          <div class="stat"><div class="lbl">Supplier ko Dena</div><div class="val red">${rs(d.kul_dena)}</div></div>
-        </div></div>
-      <div class="card"><h3>⏰ Low Stock Warning</h3>${low}</div>
-      <button class="btn primary block" onclick="openBillForm()">+ Naya Bill Banao</button>
-      <div class="card" style="margin-top:12px"><div class="kv"><span>Products</span><b>${d.products}</b></div>
-        <div class="kv"><span>Parties (Khata)</span><b>${d.parties}</b></div></div>`;
+      <div class="card" style="background:var(--teal);color:#fff">
+        <div style="font-size:13px;opacity:.9">📅 ${niceDate(todayISO())}</div>
+        <div style="font-size:20px;font-weight:800;margin-top:4px">${esc(SHOP ? SHOP.name : "Karobar")}</div>
+      </div>
+      <div class="grid2">
+        <div class="stat"><div class="lbl">Aaj ki Sale</div><div class="val teal">${rs(d.aaj_ki_sale)}</div></div>
+        <div class="stat"><div class="lbl">Aaj ki Kharid</div><div class="val">${rs(d.aaj_ki_kharid)}</div></div>
+        <div class="stat"><div class="lbl">Gahakon se Lena hai</div><div class="val green">${rs(d.kul_lena)}</div></div>
+        <div class="stat"><div class="lbl">Supplier ko Dena hai</div><div class="val red">${rs(d.kul_dena)}</div></div>
+      </div>
+      <div style="height:12px"></div>
+      <div class="quick-row">
+        <button class="quick" onclick="quickBill()"><span class="ic">🧾</span>+ Naya Bill</button>
+        <button class="quick" onclick="quickPurchase()"><span class="ic">🛒</span>+ Kharid Bill</button>
+        <button class="quick" onclick="openQuickPayment()"><span class="ic">💰</span>Wasooli</button>
+        <button class="quick" onclick="openCashForm('out')"><span class="ic">💸</span>Kharcha</button>
+      </div>
+      <div class="card"><h3>⚠️ Low Stock</h3>${low}</div>
+      <div class="card"><h3>🕘 Aaj ki Activity</h3>${recent}</div>`;
   } catch (e) { v.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
 };
 
-/* ---------- bills ---------- */
-RENDER["v-bills"] = async () => {
-  const v = $("v-bills");
-  v.innerHTML = `<div class="card">Load ho raha hai…</div>`;
+function quickBill() { SALE_TAB = "bills"; go("v-sale"); openDocForm("sale"); }
+function quickPurchase() { go("v-kharid"); openDocForm("purchase"); }
+
+/* ================= SALE (Bills | Andazay) ================= */
+let SALE_TAB = "bills";
+RENDER["v-sale"] = async () => {
+  const v = $("v-sale");
+  v.innerHTML = `
+    <div class="tabs">
+      <button class="${SALE_TAB === "bills" ? "active" : ""}" onclick="SALE_TAB='bills';RENDER['v-sale']()">🧾 Bills</button>
+      <button class="${SALE_TAB === "estimates" ? "active" : ""}" onclick="SALE_TAB='estimates';RENDER['v-sale']()">📝 Andazay</button>
+    </div>
+    <div id="sale-list"><div class="card">Load ho raha hai…</div></div>`;
+  const box = $("sale-list");
   try {
-    const bills = await api("/bills");
-    v.innerHTML = `<button class="fab" onclick="openBillForm()">+</button>` +
-      (bills.length ? bills.map((b) => `
-        <div class="list-item" onclick="go('v-bill-detail', ${b.id})">
-          <div><div class="t">${esc(b.bill_no)} ${b.party_name ? "— " + esc(b.party_name) : ""}</div>
-          <div class="s">${esc(b.date)} · ${b.items_count ?? ""}</div></div>
-          <div style="text-align:right"><div class="t">${rs(b.total)}</div>
-          ${b.baqaya > 0 ? `<span class="badge warn">Baqaya ${rs(b.baqaya)}</span>` : `<span class="badge ok">Wasool</span>`}</div>
-        </div>`).join("")
-      : `<div class="empty">Abhi koi bill nahi bana.<br>Neeche + dabakar pehla bill banao.</div>`);
-  } catch (e) { v.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
+    if (SALE_TAB === "bills") {
+      const bills = await api("/bills");
+      box.innerHTML = `<button class="fab" onclick="openDocForm('sale')">+</button>` +
+        (bills.length ? bills.map((b) => `
+          <div class="list-item" onclick="go('v-bill-detail', ${b.id})">
+            <div><div class="t">${esc(b.bill_no)}${b.party_name ? " — " + esc(b.party_name) : ""}</div>
+            <div class="s">${niceDate(b.date)}</div></div>
+            <div style="text-align:right"><div class="t">${rs(b.total)}</div>
+            ${b.baqaya > 0 ? `<span class="badge warn">Baqaya ${rs(b.baqaya)}</span>` : `<span class="badge ok">Wasool</span>`}</div>
+          </div>`).join("")
+        : `<div class="empty">Abhi koi bill nahi.<br>+ dabakar pehla bill banao.</div>`);
+    } else {
+      const ests = await api("/estimates");
+      box.innerHTML = `<button class="fab" onclick="openDocForm('estimate')">+</button>` +
+        (ests.length ? ests.map((e) => `
+          <div class="list-item" onclick="go('v-est-detail', ${e.id})">
+            <div><div class="t">${esc(e.est_no)}${e.party_name ? " — " + esc(e.party_name) : ""}</div>
+            <div class="s">${niceDate(e.date)}</div></div>
+            <div style="text-align:right"><div class="t">${rs(e.total)}</div>
+            <span class="badge ${e.status === "open" ? "info" : "ok"}">${e.status === "open" ? "Khula" : esc(e.status)}</span></div>
+          </div>`).join("")
+        : `<div class="empty">Abhi koi andaza nahi.<br>+ dabakar pehla andaza banao.</div>`);
+    }
+  } catch (e) { box.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
 };
 
-let BILL = {party_id: null, party_name: "", items: [], discount: 0, paid: 0};
-
-async function openBillForm() {
-  BILL = {party_id: null, party_name: "", items: [], discount: 0, paid: 0};
-  const [products, parties] = await Promise.all([api("/products"), api("/parties?type=customer")]);
-  window._billProducts = products;
-  window._billParties = parties;
-  renderBillForm();
+/* ---------- generic bill/purchase/estimate form ---------- */
+/* mode: sale | purchase | estimate */
+let DOC = null;
+async function openDocForm(mode) {
+  const ptype = mode === "purchase" ? "supplier" : "customer";
+  try {
+    const [products, parties] = await Promise.all([api("/products"), api("/parties?type=" + ptype)]);
+    DOC = {mode, party_id: null, party_name: "", items: [], discount: 0, paid: 0, paymode: "cash",
+           products, parties, title: mode === "sale" ? "🧾 Naya Bill" : mode === "purchase" ? "🛒 Kharid Bill" : "📝 Naya Andaza"};
+    renderDocForm();
+  } catch (e) { modal(`<h3>Error</h3><div class="card err">${esc(e.message)}</div><button class="btn ghost block" onclick="closeModal()">Band Karo</button>`); }
 }
+function docDefPrice(p) { return DOC.mode === "purchase" ? p.purchase_price : p.sale_price; }
+function docPartyWord() { return DOC.mode === "purchase" ? "Supplier" : "Gahak"; }
+function docLineTotal(it) {
+  const p = DOC.products.find((x) => x.id === it.product_id);
+  return (it.price ?? (p ? docDefPrice(p) : 0)) * it.qty;
+}
+function docSubtotal() { return DOC.items.reduce((s, it) => s + docLineTotal(it), 0); }
 
-function renderBillForm() {
-  const lines = BILL.items.map((it, i) => {
-    const p = window._billProducts.find((x) => x.id === it.product_id);
-    return `<div class="kv"><span>${esc(p ? p.name : "?")} × ${it.qty}</span>
-      <span>${rs((p ? (it.price ?? p.sale_price) : 0) * it.qty)}
-      <button class="btn sm danger" onclick="billRemoveItem(${i})">✕</button></span></div>`;
+function renderDocForm() {
+  const lines = DOC.items.map((it, i) => {
+    const p = DOC.products.find((x) => x.id === it.product_id);
+    return `<div class="line">
+      <div class="grow"><b>${esc(p ? p.name : "?")}</b><div class="s">stock ${p ? p.stock_qty : "?"}</div></div>
+      <input type="number" min="1" value="${it.qty}" onchange="docQty(${i}, this.value)" title="Miqdar">
+      <input type="number" min="0" value="${it.price}" onchange="docPrice(${i}, this.value)" title="Qeemat">
+      <button class="icon-btn" onclick="docRemove(${i})">✕</button>
+    </div>
+    <div style="text-align:right;font-size:12px;color:#6b7280;margin-bottom:6px">${rs(docLineTotal(it))}</div>`;
   }).join("");
-  const sub = BILL.items.reduce((s, it) => {
-    const p = window._billProducts.find((x) => x.id === it.product_id);
-    return s + (p ? (it.price ?? p.sale_price) : 0) * it.qty;
-  }, 0);
-  const total = Math.max(0, sub - (BILL.discount || 0));
+  const sub = docSubtotal();
+  const total = Math.max(0, sub - (DOC.discount || 0));
+  const baqaya = Math.max(0, total - (DOC.paid || 0));
+  const isEst = DOC.mode === "estimate";
   modal(`
-    <h3>🧾 Naya Bill</h3>
-    <label class="f">Gahak (khali = walk-in)</label>
-    <select id="bf-party" onchange="billPartyChange(this.value)">
-      <option value="">— Walk-in Gahak —</option>
-      ${window._billParties.map((p) => `<option value="${p.id}" ${BILL.party_id == p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}
+    <h3>${DOC.title}</h3>
+    <label class="f">${docPartyWord()} (khali = walk-in)</label>
+    <select id="df-party" onchange="docPartyChange(this.value)">
+      <option value="">— Walk-in —</option>
+      ${DOC.parties.map((p) => `<option value="${p.id}" ${DOC.party_id == p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}
     </select>
     <div class="row" style="margin-top:8px">
-      <input id="bf-newparty" class="grow" placeholder="Naya gahak ka naam">
-      <button class="btn sm ghost" onclick="billAddParty()">+ Jorain</button>
+      <input id="df-newparty" class="grow" placeholder="Naye ${docPartyWord().toLowerCase()} ka naam">
+      <button class="btn sm ghost" onclick="docAddParty()">+ Jorain</button>
     </div>
     <div class="divider"></div>
     <label class="f">Product jorain</label>
     <div class="row">
-      <select id="bf-product" class="grow">
-        ${window._billProducts.map((p) => `<option value="${p.id}">${esc(p.name)} — ${rs(p.sale_price)} (stock ${p.stock_qty})</option>`).join("")}
+      <select id="df-product" class="grow">
+        ${DOC.products.map((p) => `<option value="${p.id}">${esc(p.name)} — ${rs(docDefPrice(p))} (stock ${p.stock_qty})</option>`).join("")}
       </select>
     </div>
     <div class="row" style="margin-top:8px">
-      <input id="bf-qty" class="grow" type="number" min="1" value="1" placeholder="Miqdar">
-      <button class="btn sm primary" onclick="billAddItem()">+ Jorain</button>
+      <input id="df-qty" class="grow" type="number" min="1" value="1" placeholder="Miqdar">
+      <button class="btn sm primary" onclick="docAddItem()">+ Jorain</button>
     </div>
     <div class="divider"></div>
     ${lines || `<div style="color:#6b7280;font-size:13px">Abhi koi item nahi</div>`}
     <div class="divider"></div>
     <div class="kv"><span>Subtotal</span><b>${rs(sub)}</b></div>
     <div class="row"><label class="f grow">Discount (Rs)</label>
-      <input id="bf-disc" type="number" min="0" value="${BILL.discount}" style="width:120px" onchange="BILL.discount=+this.value||0;renderBillForm()"></div>
+      <input type="number" min="0" value="${DOC.discount}" style="width:120px" onchange="DOC.discount=+this.value||0;renderDocForm()"></div>
     <div class="kv"><span><b>Kul Total</b></span><b>${rs(total)}</b></div>
+    ${isEst ? "" : `
     <div class="row"><label class="f grow">Wasool shuda (Rs)</label>
-      <input id="bf-paid" type="number" min="0" value="${BILL.paid}" style="width:120px" onchange="BILL.paid=+this.value||0"></div>
-    <div class="err" id="bf-err"></div>
-    <button class="btn primary block" onclick="billSave(${total})">Bill Save Karo</button>
+      <input type="number" min="0" value="${DOC.paid}" style="width:120px" onchange="DOC.paid=+this.value||0;renderDocForm()"></div>
+    <div class="kv"><span>Baqaya</span><b style="color:${baqaya > 0 ? "#dc2626" : "#16a34a"}">${rs(baqaya)}</b></div>
+    <div class="row"><label class="f grow">Zariya</label>
+      <select id="df-mode" style="width:170px" onchange="DOC.paymode=this.value">
+        ${MODES.map((m) => `<option value="${m[0]}" ${DOC.paymode === m[0] ? "selected" : ""}>${m[1]}</option>`).join("")}
+      </select></div>`}
+    <div class="err" id="df-err"></div>
+    <button class="btn primary block" onclick="docSave(${total})">Save Karo</button>
     <button class="btn ghost block" onclick="closeModal()">Cancel</button>`);
 }
-
-function billPartyChange(v) {
-  BILL.party_id = v ? +v : null;
-  const p = window._billParties.find((x) => x.id === BILL.party_id);
-  BILL.party_name = p ? p.name : "";
+function docPartyChange(v) {
+  DOC.party_id = v ? +v : null;
+  const p = DOC.parties.find((x) => x.id === DOC.party_id);
+  DOC.party_name = p ? p.name : "";
 }
-async function billAddParty() {
-  const name = $("bf-newparty").value.trim();
+async function docAddParty() {
+  const name = $("df-newparty").value.trim();
   if (!name) return;
   try {
-    const p = await api("/parties", "POST", {name, type: "customer"});
-    window._billParties.push(p);
-    BILL.party_id = p.id; BILL.party_name = p.name;
-    renderBillForm();
-  } catch (e) { $("bf-err").textContent = e.message; }
+    const p = await api("/parties", "POST", {name, type: DOC.mode === "purchase" ? "supplier" : "customer"});
+    DOC.parties.push(p);
+    DOC.party_id = p.id; DOC.party_name = p.name;
+    renderDocForm();
+  } catch (e) { $("df-err").textContent = e.message; }
 }
-function billAddItem() {
-  const pid = +$("bf-product").value, qty = +$("bf-qty").value || 0;
+function docAddItem() {
+  const pid = +$("df-product").value, qty = +$("df-qty").value || 0;
   if (qty <= 0) return;
-  const ex = BILL.items.find((i) => i.product_id === pid);
-  if (ex) ex.qty += qty; else BILL.items.push({product_id: pid, qty});
-  renderBillForm();
+  const p = DOC.products.find((x) => x.id === pid);
+  const ex = DOC.items.find((i) => i.product_id === pid);
+  if (ex) ex.qty += qty;
+  else DOC.items.push({product_id: pid, qty, price: p ? docDefPrice(p) : 0});
+  renderDocForm();
 }
-function billRemoveItem(i) { BILL.items.splice(i, 1); renderBillForm(); }
+function docQty(i, v) { DOC.items[i].qty = Math.max(1, +v || 1); renderDocForm(); }
+function docPrice(i, v) { DOC.items[i].price = Math.max(0, +v || 0); renderDocForm(); }
+function docRemove(i) { DOC.items.splice(i, 1); renderDocForm(); }
 
-async function billSave(total) {
-  if (!BILL.items.length) { $("bf-err").textContent = "Pehle koi item jorain"; return; }
+async function docSave(total) {
+  if (!DOC.items.length) { $("df-err").textContent = "Pehle koi item jorain"; return; }
+  const isEst = DOC.mode === "estimate";
+  const body = {
+    party_id: DOC.party_id, party_name: DOC.party_name,
+    items: DOC.items.map((i) => ({product_id: i.product_id, qty: i.qty, price: i.price})),
+    discount: DOC.discount || 0,
+  };
+  if (!isEst) { body.paid = Math.min(DOC.paid || 0, total); body.mode = DOC.paymode; }
   try {
-    const b = await api("/bills", "POST", {
-      party_id: BILL.party_id, party_name: BILL.party_name,
-      items: BILL.items.map((i) => ({product_id: i.product_id, qty: i.qty})),
-      discount: BILL.discount || 0, paid: Math.min(BILL.paid || 0, total),
-    });
-    closeModal();
-    go("v-bill-detail", b.id);
-  } catch (e) { $("bf-err").textContent = e.message; }
+    if (DOC.mode === "sale") {
+      const b = await api("/bills", "POST", body);
+      closeModal(); go("v-bill-detail", b.id);
+    } else if (DOC.mode === "purchase") {
+      const p = await api("/purchases", "POST", body);
+      closeModal(); go("v-kharid-detail", p.id);
+    } else {
+      const e = await api("/estimates", "POST", body);
+      closeModal(); go("v-est-detail", e.id);
+    }
+  } catch (e) { $("df-err").textContent = e.message; }
+}
+
+/* ---------- bill detail ---------- */
+function docPaperHTML(shop, ref, date, partyName, items, subtotal, discount, total, paid, baqaya, mode) {
+  const rows = items.map((it) => `
+    <tr><td>${esc(it.product_name)}<br><span style="color:#6b7280">${it.qty} × ${rs(it.price)}</span></td>
+    <td class="num">${rs(it.total)}</td></tr>`).join("");
+  return `
+  <div class="bill-paper">
+    <div class="center">
+      <div class="shopname">${esc(shop.name)}</div>
+      <div class="meta">${esc(shop.address || "")}${shop.phone ? " · " + esc(shop.phone) : ""}</div>
+      ${shop.receipt_header ? `<div class="meta">${esc(shop.receipt_header)}</div>` : ""}
+    </div>
+    <div class="divider"></div>
+    <div class="kv"><span>Bill No</span><b>${esc(ref)}</b></div>
+    <div class="kv"><span>Tareekh</span><b>${niceDate(date)}</b></div>
+    ${partyName ? `<div class="kv"><span>Gahak</span><b>${esc(partyName)}</b></div>` : ""}
+    ${mode ? `<div class="kv"><span>Zariya</span><b>${esc(modeLabel(mode))}</b></div>` : ""}
+    <div class="divider"></div>
+    <table class="tbl"><tr><th>Item</th><th class="num">Raqam</th></tr>${rows}</table>
+    <div class="divider"></div>
+    <div class="kv"><span>Subtotal</span><span>${rs(subtotal)}</span></div>
+    ${discount ? `<div class="kv"><span>Discount</span><span>− ${rs(discount)}</span></div>` : ""}
+    <div class="kv"><span><b>Kul Total</b></span><b>${rs(total)}</b></div>
+    ${paid !== null ? `<div class="kv"><span>Wasool shuda</span><span>${rs(paid)}</span></div>` : ""}
+    ${baqaya !== null ? `<div class="kv"><span><b>Baqaya</b></span><b style="color:${baqaya > 0 ? "#dc2626" : "#16a34a"}">${rs(baqaya)}</b></div>` : ""}
+  </div>`;
+}
+
+function waDocText(shop, ref, date, items, total, paid, baqaya) {
+  let txt = `${shop.name}\nBill: ${ref} | ${niceDate(date)}\n----------------\n`;
+  items.forEach((it) => { txt += `${it.product_name} x${it.qty} = Rs ${it.total}\n`; });
+  txt += `----------------\nKul: Rs ${total}\n`;
+  if (paid !== null) txt += `Wasool: Rs ${paid}\n`;
+  if (baqaya !== null) txt += `Baqaya: Rs ${baqaya}\n`;
+  if (shop.receipt_header) txt += `${shop.receipt_header}`;
+  return txt;
 }
 
 RENDER["v-bill-detail"] = async (bill_id) => {
@@ -215,8 +332,78 @@ RENDER["v-bill-detail"] = async (bill_id) => {
   v.innerHTML = `<div class="card">Load ho raha hai…</div>`;
   try {
     const b = await api("/bills/" + bill_id);
-    const s = b.shop;
-    const rows = b.items.map((it) => `
+    v.innerHTML = docPaperHTML(b.shop, b.bill_no, b.date, b.party_name, b.items, b.subtotal, b.discount, b.total, b.paid, b.baqaya, b.mode) + `
+    <div class="no-print">
+      <button class="btn primary block" onclick="window.print()">🖨️ Print Karo</button>
+      <button class="btn amber block" onclick="shareDocWhatsApp('bill')">📲 WhatsApp par Bhejo</button>
+      <button class="btn ghost block" onclick="go('v-sale')">← Sale ki List</button>
+    </div>`;
+    window._lastDoc = {kind: "bill", d: b};
+  } catch (e) { v.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
+};
+
+function shareDocWhatsApp() {
+  const w = window._lastDoc;
+  if (!w) return;
+  const b = w.d;
+  const ref = w.kind === "est" ? b.est_no : b.bill_no;
+  const txt = waDocText(b.shop, ref, b.date, b.items, b.total,
+    w.kind === "est" ? null : b.paid, w.kind === "est" ? null : b.baqaya);
+  window.open("https://wa.me/?text=" + encodeURIComponent(txt), "_blank");
+}
+
+/* ---------- estimate detail ---------- */
+RENDER["v-est-detail"] = async (est_id) => {
+  const v = $("v-est-detail");
+  v.innerHTML = `<div class="card">Load ho raha hai…</div>`;
+  try {
+    const e = await api("/estimates/" + est_id);
+    v.innerHTML = docPaperHTML(e.shop, e.est_no, e.date, e.party_name, e.items, e.subtotal, e.discount, e.total, null, null, null) + `
+    <div class="no-print">
+      <div class="kv" style="background:#fff;border-radius:12px;padding:12px 14px;margin-bottom:8px"><span>Status</span><b>${e.status === "open" ? "📝 Khula hai" : esc(e.status)}</b></div>
+      ${e.status === "open" ? `<button class="btn primary block" onclick="convertEstimate(${e.id})">✅ Bill me Badlo</button>` : ""}
+      <button class="btn amber block" onclick="shareDocWhatsApp('est')">📲 WhatsApp par Bhejo</button>
+      <button class="btn ghost block" onclick="SALE_TAB='estimates';go('v-sale')">← Andazon ki List</button>
+    </div>`;
+    window._lastDoc = {kind: "est", d: e};
+  } catch (e2) { v.innerHTML = `<div class="card err">${esc(e2.message)}</div>`; }
+};
+
+async function convertEstimate(est_id) {
+  if (!confirm("Andaza pakka bill ban jaye ga, stock bhi kam hoga. Aage barhain?")) return;
+  try {
+    const b = await api("/estimates/" + est_id + "/convert", "POST");
+    SALE_TAB = "bills";
+    go("v-bill-detail", b.id);
+  } catch (e) { alert(e.message); }
+}
+
+/* ================= KHARID ================= */
+RENDER["v-kharid"] = async () => {
+  const v = $("v-kharid");
+  v.innerHTML = `<div class="card">Load ho raha hai…</div>`;
+  try {
+    const list = await api("/purchases");
+    v.innerHTML = `<button class="fab" onclick="openDocForm('purchase')">+</button>
+      <div class="card"><h3>🛒 Kharid Bills</h3></div>` +
+      (list.length ? list.map((p) => `
+        <div class="list-item" onclick="go('v-kharid-detail', ${p.id})">
+          <div><div class="t">${esc(p.bill_no)}${p.party_name ? " — " + esc(p.party_name) : ""}</div>
+          <div class="s">${niceDate(p.date)}</div></div>
+          <div style="text-align:right"><div class="t">${rs(p.total)}</div>
+          ${p.baqaya > 0 ? `<span class="badge warn">Baqaya ${rs(p.baqaya)}</span>` : `<span class="badge ok">Ada</span>`}</div>
+        </div>`).join("")
+      : `<div class="empty">Abhi koi kharid bill nahi.<br>+ dabakar pehla kharid bill banao.</div>`);
+  } catch (e) { v.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
+};
+
+RENDER["v-kharid-detail"] = async (pid) => {
+  const v = $("v-kharid-detail");
+  v.innerHTML = `<div class="card">Load ho raha hai…</div>`;
+  try {
+    const p = await api("/purchases/" + pid);
+    const s = p.shop;
+    const rows = p.items.map((it) => `
       <tr><td>${esc(it.product_name)}<br><span style="color:#6b7280">${it.qty} × ${rs(it.price)}</span></td>
       <td class="num">${rs(it.total)}</td></tr>`).join("");
     v.innerHTML = `
@@ -224,48 +411,34 @@ RENDER["v-bill-detail"] = async (bill_id) => {
       <div class="center">
         <div class="shopname">${esc(s.name)}</div>
         <div class="meta">${esc(s.address || "")}${s.phone ? " · " + esc(s.phone) : ""}</div>
-        ${s.receipt_header ? `<div class="meta">${esc(s.receipt_header)}</div>` : ""}
       </div>
       <div class="divider"></div>
-      <div class="kv"><span>Bill No</span><b>${esc(b.bill_no)}</b></div>
-      <div class="kv"><span>Tareekh</span><b>${esc(b.date)}</b></div>
-      ${b.party_name ? `<div class="kv"><span>Gahak</span><b>${esc(b.party_name)}</b></div>` : ""}
+      <div class="kv"><span>Kharid Bill No</span><b>${esc(p.bill_no)}</b></div>
+      <div class="kv"><span>Tareekh</span><b>${niceDate(p.date)}</b></div>
+      ${p.party_name ? `<div class="kv"><span>Supplier</span><b>${esc(p.party_name)}</b></div>` : ""}
+      ${p.mode ? `<div class="kv"><span>Zariya</span><b>${esc(modeLabel(p.mode))}</b></div>` : ""}
       <div class="divider"></div>
       <table class="tbl"><tr><th>Item</th><th class="num">Raqam</th></tr>${rows}</table>
       <div class="divider"></div>
-      <div class="kv"><span>Subtotal</span><span>${rs(b.subtotal)}</span></div>
-      ${b.discount ? `<div class="kv"><span>Discount</span><span>− ${rs(b.discount)}</span></div>` : ""}
-      <div class="kv"><span><b>Kul Total</b></span><b>${rs(b.total)}</b></div>
-      <div class="kv"><span>Wasool shuda</span><span>${rs(b.paid)}</span></div>
-      <div class="kv"><span><b>Baqaya</b></span><b style="color:${b.baqaya > 0 ? "#dc2626" : "#16a34a"}">${rs(b.baqaya)}</b></div>
+      <div class="kv"><span>Subtotal</span><span>${rs(p.subtotal)}</span></div>
+      ${p.discount ? `<div class="kv"><span>Discount</span><span>− ${rs(p.discount)}</span></div>` : ""}
+      <div class="kv"><span><b>Kul Total</b></span><b>${rs(p.total)}</b></div>
+      <div class="kv"><span>Ada shuda</span><span>${rs(p.paid)}</span></div>
+      <div class="kv"><span><b>Baqaya</b></span><b style="color:${p.baqaya > 0 ? "#dc2626" : "#16a34a"}">${rs(p.baqaya)}</b></div>
     </div>
     <div class="no-print">
       <button class="btn primary block" onclick="window.print()">🖨️ Print Karo</button>
-      <button class="btn amber block" onclick="shareBillWhatsApp(${b.id})">📲 WhatsApp par Bhejo</button>
-      <button class="btn ghost block" onclick="go('v-bills')">← Bills ki List</button>
+      <button class="btn ghost block" onclick="go('v-kharid')">← Kharid ki List</button>
     </div>`;
-    window._lastBill = b;
   } catch (e) { v.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
 };
 
-function shareBillWhatsApp(bill_id) {
-  const b = window._lastBill;
-  if (!b) return;
-  const s = b.shop;
-  let txt = `${s.name}\nBill: ${b.bill_no} | ${b.date}\n----------------\n`;
-  b.items.forEach((it) => { txt += `${it.product_name} x${it.qty} = Rs ${it.total}\n`; });
-  txt += `----------------\nKul: Rs ${b.total}\nWasool: Rs ${b.paid}\nBaqaya: Rs ${b.baqaya}`;
-  if (s.receipt_header) txt += `\n${s.receipt_header}`;
-  window.open("https://wa.me/?text=" + encodeURIComponent(txt), "_blank");
-}
-
-/* ---------- stock ---------- */
+/* ================= STOCK ================= */
 RENDER["v-stock"] = async () => {
   const v = $("v-stock");
   v.innerHTML = `<div class="card">Load ho raha hai…</div>`;
   try {
-    const products = await api("/products");
-    window._products = products;
+    window._products = await api("/products");
     v.innerHTML = `<button class="fab" onclick="openProductForm()">+</button>
       <div class="card"><input id="stock-q" placeholder="🔍 Product talash karo…" oninput="renderStockList(this.value)"></div>
       <div id="stock-list"></div>`;
@@ -274,25 +447,36 @@ RENDER["v-stock"] = async () => {
 };
 
 function renderStockList(q) {
+  q = (q || "").toLowerCase();
   const list = (window._products || []).filter((p) =>
-    p.name.toLowerCase().includes(q.toLowerCase()) || (p.sku || "").toLowerCase().includes(q.toLowerCase()));
-  $("stock-list").innerHTML = list.length ? list.map((p) => `
-    <div class="list-item" onclick="openProductForm(${p.id})">
-      <div><div class="t">${esc(p.name)}</div>
-        <div class="s">Kharid ${rs(p.purchase_price)} · Farokht ${rs(p.sale_price)}</div></div>
+    p.name.toLowerCase().includes(q) || (p.sku || "").toLowerCase().includes(q) ||
+    (p.barcode || "").toLowerCase().includes(q) || (p.category || "").toLowerCase().includes(q));
+  $("stock-list").innerHTML = list.length ? list.map((p) => {
+    const low = p.stock_qty <= p.low_stock_level;
+    return `
+    <div class="list-item">
+      <div class="grow" onclick="openProductForm(${p.id})" style="cursor:pointer">
+        <div class="t">${esc(p.name)}${p.category ? ` <span class="badge info">${esc(p.category)}</span>` : ""}</div>
+        <div class="s">Kharid ${rs(p.purchase_price)} · Farokht ${rs(p.sale_price)}${p.barcode ? " · 🔖 " + esc(p.barcode) : ""}${p.expiry_date ? " · ⏳ " + esc(p.expiry_date) : ""}</div>
+      </div>
       <div style="text-align:right">
-        ${p.stock_qty <= p.low_stock_level ? `<span class="badge warn">Low: ${p.stock_qty}</span>` : `<span class="badge ok">${p.stock_qty} ${esc(p.unit || "")}</span>`}
-      </div></div>`).join("")
-    : `<div class="empty">Koi product nahi mila</div>`;
+        <div style="margin-bottom:6px">${low ? `<span class="badge warn">⚠️ ${p.stock_qty}</span>` : `<span class="badge ok">${p.stock_qty} ${esc(p.unit || "")}</span>`}</div>
+        <button class="btn sm ghost" onclick="openAdjustForm(${p.id})">⚖️ Adjust</button>
+      </div>
+    </div>`;
+  }).join("") : `<div class="empty">Koi product nahi mila</div>`;
 }
 
 function openProductForm(pid) {
-  const p = pid ? window._products.find((x) => x.id === pid) : null;
+  const p = pid ? (window._products || []).find((x) => x.id === pid) : null;
   modal(`
     <h3>${p ? "✏️ Product Edit Karo" : "➕ Naya Product"}</h3>
-    <label class="f">Product ka Naam</label><input id="pf-name" value="${esc(p?.name || "")}">
-    <label class="f">SKU / Code (optional)</label><input id="pf-sku" value="${esc(p?.sku || "")}">
+    <label class="f">Product ka Naam *</label><input id="pf-name" value="${esc(p?.name || "")}">
     <div class="grid2">
+      <div><label class="f">SKU / Code</label><input id="pf-sku" value="${esc(p?.sku || "")}"></div>
+      <div><label class="f">Barcode</label><input id="pf-barcode" value="${esc(p?.barcode || "")}"></div>
+      <div><label class="f">Category</label><input id="pf-cat" value="${esc(p?.category || "")}" placeholder="Masalan: LED"></div>
+      <div><label class="f">Expiry Date</label><input id="pf-exp" type="date" value="${esc(p?.expiry_date || "")}"></div>
       <div><label class="f">Kharid Qeemat (Rs)</label><input id="pf-pp" type="number" min="0" value="${p?.purchase_price ?? 0}"></div>
       <div><label class="f">Farokht Qeemat (Rs)</label><input id="pf-sp" type="number" min="0" value="${p?.sale_price ?? 0}"></div>
       <div><label class="f">Stock Miqdar</label><input id="pf-qty" type="number" value="${p?.stock_qty ?? 0}"></div>
@@ -307,10 +491,16 @@ function openProductForm(pid) {
 
 async function saveProduct(pid) {
   const body = {
-    name: $("pf-name").value.trim(), sku: $("pf-sku").value.trim(),
+    name: $("pf-name").value.trim(),
+    sku: $("pf-sku").value.trim() || null,
+    barcode: $("pf-barcode").value.trim() || null,
+    category: $("pf-cat").value.trim() || null,
+    expiry_date: $("pf-exp").value || null,
     purchase_price: +$("pf-pp").value || 0,
-    sale_price: +$("pf-sp").value || 0, stock_qty: +$("pf-qty").value || 0,
-    low_stock_level: +$("pf-low").value || 0, unit: $("pf-unit").value.trim() || "naq",
+    sale_price: +$("pf-sp").value || 0,
+    stock_qty: +$("pf-qty").value || 0,
+    low_stock_level: +$("pf-low").value || 0,
+    unit: $("pf-unit").value.trim() || "naq",
   };
   if (!body.name) { $("pf-err").textContent = "Naam zaroori hai"; return; }
   try {
@@ -326,102 +516,58 @@ async function deleteProduct(pid) {
   catch (e) { $("pf-err").textContent = e.message; }
 }
 
-/* ---------- khata (parties) ---------- */
-let KHATA_TYPE = "customer";
-RENDER["v-khata"] = async () => {
-  const v = $("v-khata");
-  v.innerHTML = `<div class="card">Load ho raha hai…</div>`;
-  try {
-    const parties = await api("/parties?type=" + KHATA_TYPE);
-    v.innerHTML = `<button class="fab" onclick="openPartyForm()">+</button>
-      <div class="tabs">
-        <button class="${KHATA_TYPE === "customer" ? "active" : ""}" onclick="KHATA_TYPE='customer';RENDER['v-khata']()">Gahak</button>
-        <button class="${KHATA_TYPE === "supplier" ? "active" : ""}" onclick="KHATA_TYPE='supplier';RENDER['v-khata']()">Supplier</button>
-      </div>` +
-      (parties.length ? parties.map((p) => `
-        <div class="list-item" onclick="go('v-party', ${p.id})">
-          <div><div class="t">${esc(p.name)}</div><div class="s">${esc(p.phone || "")}</div></div>
-          <div style="text-align:right"><div class="t" style="color:${p.balance > 0 ? "#dc2626" : "#16a34a"}">${rs(p.balance)}</div>
-          <div class="s">${KHATA_TYPE === "customer" ? "lena hai" : "dena hai"}</div></div>
-        </div>`).join("")
-      : `<div class="empty">Koi ${KHATA_TYPE === "customer" ? "gahak" : "supplier"} nahi.<br>+ dabakar jorain.</div>`);
-  } catch (e) { v.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
-};
-
-function openPartyForm() {
+function openAdjustForm(pid) {
+  const p = (window._products || []).find((x) => x.id === pid);
+  if (!p) return;
   modal(`
-    <h3>➕ Naya ${KHATA_TYPE === "customer" ? "Gahak" : "Supplier"}</h3>
-    <label class="f">Naam</label><input id="pt-name">
-    <label class="f">Mobile Number</label><input id="pt-phone" inputmode="tel">
-    <label class="f">Pata</label><input id="pt-addr">
-    <div class="err" id="pt-err"></div>
-    <button class="btn primary block" onclick="saveParty()">Save Karo</button>
+    <h3>⚖️ Stock Adjust — ${esc(p.name)}</h3>
+    <div class="card"><div class="kv"><span>Maujooda Stock</span><b>${p.stock_qty} ${esc(p.unit || "")}</b></div></div>
+    <label class="f">Miqdar me Tabdeeli (+ jorna / − kam karna)</label>
+    <input id="ad-qty" type="number" placeholder="Masalan: 10 ya -5">
+    <label class="f">Wajah / Note</label>
+    <input id="ad-note" placeholder="Masalan: toot gaya / recount">
+    <div class="err" id="ad-err"></div>
+    <button class="btn primary block" onclick="saveAdjust(${pid})">Adjust Karo</button>
     <button class="btn ghost block" onclick="closeModal()">Cancel</button>`);
 }
-async function saveParty() {
-  const name = $("pt-name").value.trim();
-  if (!name) { $("pt-err").textContent = "Naam zaroori hai"; return; }
+async function saveAdjust(pid) {
+  const qty = +$("ad-qty").value;
+  if (!qty) { $("ad-err").textContent = "Miqdar likho (+ ya −)"; return; }
   try {
-    await api("/parties", "POST", {name, phone: $("pt-phone").value.trim(), type: KHATA_TYPE, address: $("pt-addr").value.trim()});
-    closeModal(); RENDER["v-khata"]();
-  } catch (e) { $("pt-err").textContent = e.message; }
+    await api("/products/" + pid + "/adjust", "POST", {qty_change: qty, note: $("ad-note").value.trim()});
+    closeModal(); RENDER["v-stock"]();
+  } catch (e) { $("ad-err").textContent = e.message; }
 }
 
-RENDER["v-party"] = async (pid) => {
-  const v = $("v-party");
-  v.innerHTML = `<div class="card">Load ho raha hai…</div>`;
+/* ---------- quick wasooli (home se) ---------- */
+async function openQuickPayment() {
   try {
-    const p = await api("/parties/" + pid);
-    window._party = p;
-    const dir = p.type === "customer" ? "lena" : "dena";
-    const dirLbl = p.type === "customer" ? "Wasooli (lena)" : "Adaigi (dena)";
-    const hist = p.history.length ? p.history.map((h) => h.kind === "bill"
-      ? `<div class="kv"><span>🧾 ${esc(h.bill_no)} · ${esc(h.date)}</span><span class="num">${rs(h.total)}<br><span style="font-size:11px;color:${h.baqaya > 0 ? "#dc2626" : "#16a34a"}">baqaya ${rs(h.baqaya)}</span></span></div>`
-      : `<div class="kv"><span>💰 ${dirLbl} · ${esc(h.date)}${h.note ? "<br><span style='font-size:11px;color:#6b7280'>" + esc(h.note) + "</span>" : ""}</span><span class="num" style="color:#16a34a">− ${rs(h.amount)}</span></div>`
-    ).join("") : `<div class="empty">Koi len-den nahi</div>`;
-    v.innerHTML = `
-      <div class="card"><h3>${esc(p.name)}</h3>
-        <div class="s" style="color:#6b7280">${esc(p.phone || "")} ${esc(p.address || "")}</div>
-        <div class="stat" style="margin-top:10px"><div class="lbl">${p.type === "customer" ? "Gahak se LENA hai" : "Supplier ko DENA hai"}</div>
-        <div class="val ${p.balance > 0 ? "red" : "green"}">${rs(p.balance)}</div></div></div>
-      <button class="btn primary block" onclick="openPaymentForm('${dir}')">+ ${dirLbl} Darj Karo</button>
-      <div class="card" style="margin-top:12px"><h3>Len-den ki History</h3>${hist}</div>
-      <button class="btn ghost block" onclick="go('v-khata')">← Khata</button>`;
-  } catch (e) { v.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
-};
-
-function openPaymentForm(dir) {
-  modal(`
-    <h3>💰 ${dir === "lena" ? "Wasooli" : "Adaigi"} — ${esc(window._party.name)}</h3>
-    <label class="f">Raqam (Rs)</label><input id="pm-amt" type="number" min="1">
-    <label class="f">Zariya</label>
-    <select id="pm-mode"><option value="cash">Cash</option><option value="bank">Bank</option><option value="online">Online (JazzCash/Easypaisa)</option></select>
-    <label class="f">Note</label><input id="pm-note">
-    <div class="err" id="pm-err"></div>
-    <button class="btn primary block" onclick="savePayment('${dir}')">Save Karo</button>
-    <button class="btn ghost block" onclick="closeModal()">Cancel</button>`);
+    const parties = await api("/parties?type=customer");
+    window._qpParties = parties;
+    modal(`
+      <h3>💰 Wasooli Darj Karo</h3>
+      <label class="f">Gahak</label>
+      <select id="qp-party">${parties.map((p) => `<option value="${p.id}">${esc(p.name)} — baqaya ${rs(p.balance)}</option>`).join("")}</select>
+      <label class="f">Raqam (Rs)</label><input id="qp-amt" type="number" min="1">
+      <label class="f">Zariya</label>
+      <select id="qp-mode">${MODES.map((m) => `<option value="${m[0]}">${m[1]}</option>`).join("")}</select>
+      <label class="f">Note</label><input id="qp-note">
+      <div class="err" id="qp-err"></div>
+      <button class="btn primary block" onclick="saveQuickPayment()">Save Karo</button>
+      <button class="btn ghost block" onclick="closeModal()">Cancel</button>`);
+  } catch (e) { alert(e.message); }
 }
-async function savePayment(dir) {
-  const amt = +$("pm-amt").value || 0;
-  if (amt <= 0) { $("pm-err").textContent = "Raqam likho"; return; }
+async function saveQuickPayment() {
+  const amt = +$("qp-amt").value || 0;
+  if (amt <= 0) { $("qp-err").textContent = "Raqam likho"; return; }
   try {
-    await api(`/parties/${window._party.id}/payments`, "POST",
-      {amount: amt, direction: dir, mode: $("pm-mode").value, note: $("pm-note").value.trim()});
-    closeModal(); RENDER["v-party"](window._party.id);
-  } catch (e) { $("pm-err").textContent = e.message; }
+    await api(`/parties/${$("qp-party").value}/payments`, "POST",
+      {amount: amt, direction: "lena", mode: $("qp-mode").value, note: $("qp-note").value.trim()});
+    closeModal(); go("v-home");
+  } catch (e) { $("qp-err").textContent = e.message; }
 }
 
-/* ---------- aur (more menu) ---------- */
-RENDER["v-more"] = async () => {
-  $("v-more").innerHTML = `
-    <div class="menu-item" onclick="go('v-cash')"><span class="ic">💵</span><div class="t">Cash Book</div></div>
-    <div class="menu-item" onclick="go('v-reports')"><span class="ic">📊</span><div class="t">Reports</div></div>
-    <div class="menu-item" onclick="go('v-settings')"><span class="ic">⚙️</span><div class="t">Settings</div></div>
-    <div class="menu-item" onclick="logout()"><span class="ic">🚪</span><div class="t">Logout</div></div>
-    <div style="text-align:center;color:#9ca3af;font-size:12px;margin-top:20px">Karobar v1.0 (MVP)</div>`;
-};
-
-/* ---------- cash book ---------- */
+/* ================= CASH BOOK ================= */
 let CASH_DATE = todayISO();
 RENDER["v-cash"] = async () => {
   const v = $("v-cash");
@@ -430,6 +576,7 @@ RENDER["v-cash"] = async () => {
     const c = await api("/cash?date=" + CASH_DATE);
     v.innerHTML = `
       <div class="card"><div class="row">
+        <label class="f grow" style="margin:0">📅 Tareekh</label>
         <input type="date" id="cash-date" class="grow" value="${CASH_DATE}" onchange="CASH_DATE=this.value;RENDER['v-cash']()">
       </div>
       <div class="grid2" style="margin-top:10px">
@@ -456,7 +603,7 @@ function openCashForm(kind) {
     <h3>${kind === "in" ? "💰 Cash In" : "💸 Cash Out (Kharcha)"}</h3>
     <label class="f">Raqam (Rs)</label><input id="cf-amt" type="number" min="1">
     <label class="f">Category</label>
-    <input id="cf-cat" value="${kind === "out" ? "kharcha" : "aamad"}" placeholder="${kind === "out" ? "kharcha" : "aamad"}">
+    <input id="cf-cat" value="${kind === "out" ? "kharcha" : "aamad"}" placeholder="${kind === "out" ? "Masalan: kiraya, bijli" : "Masalan: aamad"}">
     <label class="f">Note</label><input id="cf-note" placeholder="Tafseel likho">
     <div class="err" id="cf-err"></div>
     <button class="btn primary block" onclick="saveCash('${kind}')">Save Karo</button>
@@ -467,66 +614,290 @@ async function saveCash(kind) {
   if (amt <= 0) { $("cf-err").textContent = "Raqam likho"; return; }
   try {
     await api("/cash", "POST", {kind, amount: amt, category: $("cf-cat").value.trim(), note: $("cf-note").value.trim(), date: CASH_DATE});
-    closeModal(); RENDER["v-cash"]();
+    closeModal();
+    const active = document.querySelector(".view.active");
+    if (active && active.id === "v-cash") RENDER["v-cash"]();
+    else if (active && RENDER[active.id]) RENDER[active.id]();
   } catch (e) { $("cf-err").textContent = e.message; }
 }
 
-/* ---------- reports ---------- */
-let REP_FROM = todayISO(), REP_TO = todayISO();
+/* ================= AUR (menu) ================= */
+RENDER["v-more"] = async () => {
+  $("v-more").innerHTML = `
+    <div class="menu-item" onclick="go('v-khata')"><span class="ic">📒</span><div class="t">Khata (Gahak / Supplier)</div></div>
+    <div class="menu-item" onclick="go('v-cash')"><span class="ic">💵</span><div class="t">Cash Book</div></div>
+    <div class="menu-item" onclick="go('v-kharchay')"><span class="ic">💸</span><div class="t">Kharchay</div></div>
+    <div class="menu-item" onclick="go('v-reports')"><span class="ic">📊</span><div class="t">Reports</div></div>
+    <div class="menu-item" onclick="go('v-settings')"><span class="ic">⚙️</span><div class="t">Settings</div></div>
+    <div class="menu-item" onclick="logout()"><span class="ic">🚪</span><div class="t">Logout</div></div>
+    <div style="text-align:center;color:#9ca3af;font-size:12px;margin-top:20px">Karobar v2.0</div>`;
+};
+
+/* ================= KHATA ================= */
+let KHATA_TYPE = "customer";
+RENDER["v-khata"] = async () => {
+  const v = $("v-khata");
+  v.innerHTML = `<div class="card">Load ho raha hai…</div>`;
+  try {
+    const parties = await api("/parties?type=" + KHATA_TYPE);
+    const total = parties.reduce((s, p) => s + (p.balance || 0), 0);
+    v.innerHTML = `<button class="fab" onclick="openPartyForm()">+</button>
+      <div class="tabs">
+        <button class="${KHATA_TYPE === "customer" ? "active" : ""}" onclick="KHATA_TYPE='customer';RENDER['v-khata']()">👥 Gahak</button>
+        <button class="${KHATA_TYPE === "supplier" ? "active" : ""}" onclick="KHATA_TYPE='supplier';RENDER['v-khata']()">🏭 Supplier</button>
+      </div>
+      <div class="card"><div class="kv"><span><b>Kul ${KHATA_TYPE === "customer" ? "Lena hai" : "Dena hai"}</b></span><b style="color:${total > 0 ? "#dc2626" : "#16a34a"}">${rs(total)}</b></div></div>` +
+      (parties.length ? parties.map((p) => `
+        <div class="list-item" onclick="go('v-party', ${p.id})">
+          <div><div class="t">${esc(p.name)}</div><div class="s">${esc(p.phone || "")}</div></div>
+          <div style="text-align:right"><div class="t" style="color:${p.balance > 0 ? "#dc2626" : "#16a34a"}">${rs(p.balance)}</div></div>
+        </div>`).join("")
+      : `<div class="empty">Koi ${KHATA_TYPE === "customer" ? "gahak" : "supplier"} nahi.<br>+ dabakar jorain.</div>`) +
+      `<button class="btn ghost block" onclick="go('v-more')">← Wapas</button>`;
+  } catch (e) { v.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
+};
+
+function openPartyForm() {
+  modal(`
+    <h3>➕ Naya ${KHATA_TYPE === "customer" ? "Gahak" : "Supplier"}</h3>
+    <label class="f">Naam *</label><input id="pt-name">
+    <label class="f">Mobile Number</label><input id="pt-phone" inputmode="tel">
+    <label class="f">Pata</label><input id="pt-addr">
+    <div class="err" id="pt-err"></div>
+    <button class="btn primary block" onclick="saveParty()">Save Karo</button>
+    <button class="btn ghost block" onclick="closeModal()">Cancel</button>`);
+}
+async function saveParty() {
+  const name = $("pt-name").value.trim();
+  if (!name) { $("pt-err").textContent = "Naam zaroori hai"; return; }
+  try {
+    await api("/parties", "POST", {name, phone: $("pt-phone").value.trim(), type: KHATA_TYPE, address: $("pt-addr").value.trim()});
+    closeModal(); RENDER["v-khata"]();
+  } catch (e) { $("pt-err").textContent = e.message; }
+}
+
+RENDER["v-party"] = async (pid) => {
+  const v = $("v-party");
+  v.innerHTML = `<div class="card">Load ho raha hai…</div>`;
+  try {
+    const p = await api("/parties/" + pid);
+    window._party = p;
+    const isCust = p.type === "customer";
+    const actLbl = isCust ? "Wasooli (lena)" : "Adaigi (dena)";
+    const dir = isCust ? "lena" : "dena";
+    const hist = p.history.length ? p.history.map((h) => h.kind === "bill"
+      ? `<div class="kv"><span>🧾 ${esc(h.bill_no)} · ${niceDate(h.date)}</span><span class="num">${rs(h.total)}<br><span style="font-size:11px;color:${h.baqaya > 0 ? "#dc2626" : "#16a34a"}">baqaya ${rs(h.baqaya)}</span></span></div>`
+      : `<div class="kv"><span>💰 ${actLbl} · ${niceDate(h.date)}${h.note ? "<br><span style='font-size:11px;color:#6b7280'>" + esc(h.note) + "</span>" : ""}</span><span class="num" style="color:#16a34a">− ${rs(h.amount)}</span></div>`
+    ).join("") : `<div class="empty">Koi len-den nahi</div>`;
+    v.innerHTML = `
+      <div class="card"><h3>${esc(p.name)}</h3>
+        <div class="s" style="color:#6b7280">${esc(p.phone || "")}${p.address ? " · " + esc(p.address) : ""}</div>
+        <div class="stat" style="margin-top:10px"><div class="lbl">${isCust ? "Gahak se LENA hai" : "Supplier ko DENA hai"}</div>
+        <div class="val ${p.balance > 0 ? "red" : "green"}">${rs(p.balance)}</div></div></div>
+      <button class="btn primary block" onclick="openPaymentForm('${dir}')">+ ${actLbl} Darj Karo</button>
+      <div class="row" style="margin-top:8px">
+        <button class="btn amber grow" onclick="waReminder()">📲 WhatsApp Reminder</button>
+        <button class="btn ghost grow" onclick="waStatement()">📄 Statement Bhejo</button>
+      </div>
+      <div class="card" style="margin-top:12px"><h3>Len-den ki History</h3>${hist}</div>
+      <button class="btn ghost block" onclick="go('v-khata')">← Khata</button>`;
+  } catch (e) { v.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
+};
+
+function openPaymentForm(dir) {
+  modal(`
+    <h3>💰 ${dir === "lena" ? "Wasooli" : "Adaigi"} — ${esc(window._party.name)}</h3>
+    <label class="f">Raqam (Rs)</label><input id="pm-amt" type="number" min="1">
+    <label class="f">Direction</label>
+    <select id="pm-dir">
+      <option value="lena" ${dir === "lena" ? "selected" : ""}>Lena (wasooli)</option>
+      <option value="dena" ${dir === "dena" ? "selected" : ""}>Dena (adaigi)</option>
+    </select>
+    <label class="f">Zariya</label>
+    <select id="pm-mode">${MODES.map((m) => `<option value="${m[0]}">${m[1]}</option>`).join("")}</select>
+    <label class="f">Tareekh</label><input id="pm-date" type="date" value="${todayISO()}">
+    <label class="f">Note</label><input id="pm-note">
+    <div class="err" id="pm-err"></div>
+    <button class="btn primary block" onclick="savePayment()">Save Karo</button>
+    <button class="btn ghost block" onclick="closeModal()">Cancel</button>`);
+}
+async function savePayment() {
+  const amt = +$("pm-amt").value || 0;
+  if (amt <= 0) { $("pm-err").textContent = "Raqam likho"; return; }
+  try {
+    await api(`/parties/${window._party.id}/payments`, "POST",
+      {amount: amt, direction: $("pm-dir").value, mode: $("pm-mode").value,
+       note: $("pm-note").value.trim(), date: $("pm-date").value || undefined});
+    closeModal(); RENDER["v-party"](window._party.id);
+  } catch (e) { $("pm-err").textContent = e.message; }
+}
+
+function waReminder() {
+  const p = window._party;
+  if (!p) return;
+  const txt = `Assalam-o-Alaikum ${p.name}! ${SHOP ? SHOP.name : "Karobar"} se yaad-dahani: apka baqaya Rs ${Number(p.balance || 0).toLocaleString("en-PK", {maximumFractionDigits: 0})} hai. Shukriya!`;
+  const ph = waPhone(p.phone);
+  window.open(ph ? `https://wa.me/${ph}?text=${encodeURIComponent(txt)}` : "https://wa.me/?text=" + encodeURIComponent(txt), "_blank");
+}
+
+function waStatement() {
+  const p = window._party;
+  if (!p) return;
+  const isCust = p.type === "customer";
+  let txt = `${SHOP ? SHOP.name : "Karobar"}\nKhata Statement — ${p.name}\n----------------\n`;
+  p.history.forEach((h) => {
+    if (h.kind === "bill") txt += `Bill ${h.bill_no} | ${h.date} | Kul Rs ${h.total} | Baqaya Rs ${h.baqaya}\n`;
+    else txt += `${h.direction === "lena" ? "Wasooli" : "Adaigi"} | ${h.date} | Rs ${h.amount}${h.note ? " (" + h.note + ")" : ""}\n`;
+  });
+  txt += `----------------\n${isCust ? "Lena hai" : "Dena hai"}: Rs ${Number(p.balance || 0).toLocaleString("en-PK", {maximumFractionDigits: 0})}\nShukriya!`;
+  const ph = waPhone(p.phone);
+  window.open(ph ? `https://wa.me/${ph}?text=${encodeURIComponent(txt)}` : "https://wa.me/?text=" + encodeURIComponent(txt), "_blank");
+}
+
+/* ================= KHARCHAY ================= */
+let KHA_FROM = todayISO(), KHA_TO = todayISO();
+RENDER["v-kharchay"] = async () => {
+  const v = $("v-kharchay");
+  v.innerHTML = `
+    <div class="card"><h3>💸 Kharchay</h3>
+      <div class="row">
+        <div class="grow"><label class="f">Se</label><input type="date" id="kha-from" value="${KHA_FROM}"></div>
+        <div class="grow"><label class="f">Tak</label><input type="date" id="kha-to" value="${KHA_TO}"></div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button class="btn sm ghost" onclick="setKhaRange(0)">Aaj</button>
+        <button class="btn sm ghost" onclick="setKhaRange(7)">7 Din</button>
+        <button class="btn sm ghost" onclick="setKhaRange(30)">30 Din</button>
+        <button class="btn sm primary" onclick="loadKharchay()">Dikhao</button>
+      </div></div>
+    <div id="kha-out"></div>
+    <div class="row"><button class="btn danger grow" onclick="openCashForm('out')">+ Naya Kharcha</button></div>
+    <div style="height:8px"></div>
+    <button class="btn ghost block" onclick="go('v-more')">← Wapas</button>`;
+  loadKharchay();
+};
+function setKhaRange(days) {
+  const t = new Date();
+  KHA_TO = t.toISOString().slice(0, 10);
+  KHA_FROM = new Date(t - days * 864e5).toISOString().slice(0, 10);
+  RENDER["v-kharchay"]();
+}
+async function loadKharchay() {
+  KHA_FROM = $("kha-from").value; KHA_TO = $("kha-to").value;
+  const out = $("kha-out");
+  out.innerHTML = `<div class="card">Load ho raha hai…</div>`;
+  try {
+    const r = await api(`/reports/expenses?from_date=${KHA_FROM}&to_date=${KHA_TO}`);
+    out.innerHTML = `
+      <div class="card"><h3>📂 Category-wise Kharcha</h3>
+        ${(r.by_category || []).length ? `<table class="tbl"><tr><th>Category</th><th class="num">Adad</th><th class="num">Kul</th></tr>` +
+          r.by_category.map((c) => `<tr><td>${esc(c.category)}</td><td class="num">${c.n}</td><td class="num">${rs(c.total)}</td></tr>`).join("") + `</table>`
+        : `<div style="color:#6b7280;font-size:13px">Koi kharcha nahi</div>`}
+        <div class="divider"></div>
+        <div class="kv"><span><b>Kul Kharcha</b></span><b class="val red">${rs(r.total)}</b></div></div>`;
+  } catch (e) { out.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
+}
+
+/* ================= REPORTS ================= */
+let REP_SUB = "sale", REP_FROM = todayISO(), REP_TO = todayISO(), OUT_TYPE = "customer", DB_DATE = todayISO();
+const REP_TABS = [["sale", "🧾 Sale"], ["profit", "💹 Profit"], ["stock", "📦 Stock"], ["udhaar", "📒 Udhaar"], ["daybook", "📖 Day Book"]];
 RENDER["v-reports"] = async () => {
   const v = $("v-reports");
   v.innerHTML = `
-    <div class="card"><h3>📊 Reports</h3>
-      <div class="row">
-        <div class="grow"><label class="f">Se</label><input type="date" id="rep-from" value="${REP_FROM}"></div>
-        <div class="grow"><label class="f">Tak</label><input type="date" id="rep-to" value="${REP_TO}"></div>
-      </div>
-      <div class="row" style="margin-top:8px">
-        <button class="btn sm ghost" onclick="setRepRange(0)">Aaj</button>
-        <button class="btn sm ghost" onclick="setRepRange(7)">7 Din</button>
-        <button class="btn sm ghost" onclick="setRepRange(30)">30 Din</button>
-        <button class="btn sm primary" onclick="loadReports()">Dikhao</button>
-      </div></div>
+    <div class="tabs" style="flex-wrap:wrap">
+      ${REP_TABS.map((t) => `<button class="${REP_SUB === t[0] ? "active" : ""}" onclick="REP_SUB='${t[0]}';RENDER['v-reports']()">${t[1]}</button>`).join("")}
+    </div>
     <div id="rep-out"></div>
     <button class="btn ghost block" onclick="go('v-more')">← Wapas</button>`;
-  loadReports();
+  loadReportSub();
 };
+function repRangeHTML() {
+  return `<div class="card"><div class="row">
+      <div class="grow"><label class="f">Se</label><input type="date" id="rep-from" value="${REP_FROM}"></div>
+      <div class="grow"><label class="f">Tak</label><input type="date" id="rep-to" value="${REP_TO}"></div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button class="btn sm ghost" onclick="setRepRange(0)">Aaj</button>
+      <button class="btn sm ghost" onclick="setRepRange(7)">7 Din</button>
+      <button class="btn sm ghost" onclick="setRepRange(30)">30 Din</button>
+      <button class="btn sm primary" onclick="loadReportSub()">Dikhao</button>
+    </div></div>`;
+}
 function setRepRange(days) {
   const t = new Date();
   REP_TO = t.toISOString().slice(0, 10);
   REP_FROM = new Date(t - days * 864e5).toISOString().slice(0, 10);
   RENDER["v-reports"]();
 }
-async function loadReports() {
-  REP_FROM = $("rep-from").value; REP_TO = $("rep-to").value;
+async function loadReportSub() {
   const out = $("rep-out");
+  if ($("rep-from")) { REP_FROM = $("rep-from").value; REP_TO = $("rep-to").value; }
   out.innerHTML = `<div class="card">Load ho raha hai…</div>`;
   try {
-    const [s, p] = await Promise.all([
-      api(`/reports/sales?from_date=${REP_FROM}&to_date=${REP_TO}`),
-      api(`/reports/profit?from_date=${REP_FROM}&to_date=${REP_TO}`),
-    ]);
-    out.innerHTML = `
-      <div class="card"><h3>🧾 Sale Report</h3>
-        <div class="kv"><span>Bills</span><b>${s.total.bills}</b></div>
-        <div class="kv"><span>Kul Sale</span><b>${rs(s.total.sale)}</b></div>
-        <div class="kv"><span>Wasool shuda</span><b>${rs(s.total.wasool)}</b></div>
-        <div class="kv"><span>Baqaya</span><b>${rs(s.total.baqaya)}</b></div></div>
-      <div class="card"><h3>💹 Profit Report</h3>
-        <div class="kv"><span>Revenue</span><b>${rs(p.revenue)}</b></div>
-        <div class="kv"><span>Laagat (cost)</span><b>${rs(p.cost)}</b></div>
-        <div class="kv"><span>Discount</span><b>${rs(p.discount)}</b></div>
-        <div class="kv"><span><b>Khaalis Munafa</b></span><b style="color:#16a34a">${rs(p.profit)}</b></div></div>
-      <div class="card"><h3>🏆 Top Products</h3>
-        ${p.top_products.length ? `<table class="tbl"><tr><th>Product</th><th class="num">Miqdar</th><th class="num">Sale</th><th class="num">Munafa</th></tr>` +
-          p.top_products.map((t) => `<tr><td>${esc(t.product_name)}</td><td class="num">${t.qty}</td><td class="num">${rs(t.revenue)}</td><td class="num">${rs(t.profit)}</td></tr>`).join("") + `</table>`
-        : `<div style="color:#6b7280;font-size:13px">Koi sale nahi</div>`}</div>
-      ${s.days.length > 1 ? `<div class="card"><h3>📅 Rozana Sale</h3><table class="tbl"><tr><th>Tareekh</th><th class="num">Bills</th><th class="num">Sale</th></tr>` +
-        s.days.map((d) => `<tr><td>${esc(d.date)}</td><td class="num">${d.bills}</td><td class="num">${rs(d.sale)}</td></tr>`).join("") + `</table></div>` : ""}`;
+    if (REP_SUB === "sale") {
+      const s = await api(`/reports/sales?from_date=${REP_FROM}&to_date=${REP_TO}`);
+      out.innerHTML = repRangeHTML() + `
+        <div class="card"><h3>🧾 Sale Report</h3>
+          <div class="kv"><span>Bills</span><b>${s.total.bills}</b></div>
+          <div class="kv"><span>Kul Sale</span><b>${rs(s.total.sale)}</b></div>
+          <div class="kv"><span>Wasool shuda</span><b>${rs(s.total.wasool)}</b></div>
+          <div class="kv"><span>Baqaya</span><b>${rs(s.total.baqaya)}</b></div></div>
+        ${s.days.length > 1 ? `<div class="card"><h3>📅 Rozana Sale</h3><table class="tbl"><tr><th>Tareekh</th><th class="num">Bills</th><th class="num">Sale</th></tr>` +
+          s.days.map((d) => `<tr><td>${niceDate(d.date)}</td><td class="num">${d.bills}</td><td class="num">${rs(d.sale)}</td></tr>`).join("") + `</table></div>` : ""}`;
+    } else if (REP_SUB === "profit") {
+      const p = await api(`/reports/profit?from_date=${REP_FROM}&to_date=${REP_TO}`);
+      out.innerHTML = repRangeHTML() + `
+        <div class="card"><h3>💹 Profit Report</h3>
+          <div class="kv"><span>Revenue</span><b>${rs(p.revenue)}</b></div>
+          <div class="kv"><span>Laagat (cost)</span><b>${rs(p.cost)}</b></div>
+          <div class="kv"><span>Discount</span><b>${rs(p.discount)}</b></div>
+          <div class="kv"><span><b>Khaalis Munafa</b></span><b style="color:#16a34a">${rs(p.profit)}</b></div></div>
+        <div class="card"><h3>🏆 Top Products</h3>
+          ${p.top_products.length ? `<table class="tbl"><tr><th>Product</th><th class="num">Miqdar</th><th class="num">Sale</th><th class="num">Munafa</th></tr>` +
+            p.top_products.map((t) => `<tr><td>${esc(t.product_name)}</td><td class="num">${t.qty}</td><td class="num">${rs(t.revenue)}</td><td class="num">${rs(t.profit)}</td></tr>`).join("") + `</table>`
+          : `<div style="color:#6b7280;font-size:13px">Koi sale nahi</div>`}</div>`;
+    } else if (REP_SUB === "stock") {
+      const r = await api("/reports/stock");
+      out.innerHTML = `
+        <div class="card"><h3>📦 Stock Report</h3>
+          <div class="kv"><span>Stock Value (kharid qeemat)</span><b>${rs(r.total_cost_value)}</b></div>
+          <div class="kv"><span>Stock Value (farokht qeemat)</span><b>${rs(r.total_sale_value)}</b></div>
+          <div class="kv"><span>Low Stock Items</span><b style="color:#dc2626">${r.low_count}</b></div></div>
+        <div class="card"><h3>Items</h3><div style="overflow-x:auto"><table class="tbl">
+          <tr><th>Product</th><th class="num">Stock</th><th class="num">Kharid</th><th class="num">Farokht</th><th class="num">Value (cost)</th></tr>
+          ${r.items.map((i) => `<tr${i.stock_qty <= i.low_stock_level ? ' style="background:#fef3c7"' : ""}><td>${esc(i.name)}${i.sku ? "<br><span style='font-size:11px;color:#6b7280'>" + esc(i.sku) + "</span>" : ""}</td><td class="num">${i.stock_qty}</td><td class="num">${rs(i.purchase_price)}</td><td class="num">${rs(i.sale_price)}</td><td class="num">${rs(i.stock_value_cost)}</td></tr>`).join("")}
+        </table></div></div>`;
+    } else if (REP_SUB === "udhaar") {
+      const r = await api("/reports/outstanding?type=" + OUT_TYPE);
+      out.innerHTML = `
+        <div class="tabs">
+          <button class="${OUT_TYPE === "customer" ? "active" : ""}" onclick="OUT_TYPE='customer';loadReportSub()">Gahak</button>
+          <button class="${OUT_TYPE === "supplier" ? "active" : ""}" onclick="OUT_TYPE='supplier';loadReportSub()">Supplier</button>
+        </div>
+        <div class="card"><div class="kv"><span><b>Kul ${OUT_TYPE === "customer" ? "Lena hai" : "Dena hai"}</b></span><b style="color:#dc2626">${rs(r.total)}</b></div></div>
+        ${(r.parties || []).length ? r.parties.map((p) => `
+          <div class="list-item" onclick="KHATA_TYPE='${OUT_TYPE}';go('v-party', ${p.id})">
+            <div><div class="t">${esc(p.name)}</div><div class="s">${esc(p.phone || "")}</div></div>
+            <div class="t" style="color:#dc2626">${rs(p.balance)}</div>
+          </div>`).join("") : `<div class="empty">Koi udhaar nahi 👍</div>`}`;
+    } else if (REP_SUB === "daybook") {
+      const r = await api("/reports/daybook?date=" + DB_DATE);
+      out.innerHTML = `
+        <div class="card"><div class="row">
+          <label class="f grow" style="margin:0">📅 Tareekh</label>
+          <input type="date" class="grow" value="${DB_DATE}" onchange="DB_DATE=this.value;loadReportSub()">
+        </div>
+        <div class="kv" style="margin-top:8px"><span><b>Kul Entries</b></span><b>${r.count}</b></div></div>
+        ${(r.items || []).length ? r.items.map((i) => `
+          <div class="list-item" style="cursor:default">
+            <div><div class="t">${esc(i.ref || i.kind)}</div><div class="s">${esc(i.tafseel || "")}</div></div>
+            <div class="t">${rs(i.amount)}</div>
+          </div>`).join("") : `<div class="empty">Is din koi entry nahi</div>`}`;
+    }
   } catch (e) { out.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
 }
 
-/* ---------- settings ---------- */
+/* ================= SETTINGS ================= */
 RENDER["v-settings"] = async () => {
   const v = $("v-settings");
   try {
@@ -553,7 +924,7 @@ async function saveSettings() {
   } catch (e) { $("st-err").textContent = e.message; }
 }
 
-/* ---------- boot ---------- */
+/* ================= BOOT ================= */
 async function boot() {
   try {
     SHOP = await api("/auth/me");
