@@ -158,6 +158,33 @@ class EstimateIn(BaseModel):
     date: Optional[str] = None
 
 
+class ChallanItemIn(BaseModel):
+    product_id: int
+    qty: float = Field(gt=0)
+
+
+class ChallanIn(BaseModel):
+    party_id: Optional[int] = None
+    party_name: str = ""
+    items: list[ChallanItemIn] = Field(min_length=1)
+    vehicle_no: str = ""
+    date: Optional[str] = None
+
+
+class BankAccountIn(BaseModel):
+    name: str
+    bank_name: str = ""
+    account_no: str = ""
+    opening_balance: float = 0
+
+
+class BankTxnIn(BaseModel):
+    kind: str  # in | out
+    amount: float = Field(gt=0)
+    note: str = ""
+    date: Optional[str] = None
+
+
 class CashIn(BaseModel):
     kind: str  # in | out
     amount: float = Field(gt=0)
@@ -543,6 +570,215 @@ def convert_estimate(est_id: int, shop_id: int = Depends(shop_of)):
         conn.execute("UPDATE estimates SET status='converted' WHERE id=?", (est_id,))
         conn.commit()
         return get_bill(conn, shop_id, bill_id)
+    finally:
+        conn.close()
+
+
+# ---------- delivery challans ----------
+
+def next_challan_no(conn, shop_id: int) -> str:
+    n = conn.execute("SELECT COUNT(*) FROM challans WHERE shop_id=?", (shop_id,)).fetchone()[0]
+    return f"CH-{n + 1:05d}"
+
+
+def get_challan(conn, shop_id: int, ch_id: int):
+    c = conn.execute("SELECT * FROM challans WHERE id=? AND shop_id=?", (ch_id, shop_id)).fetchone()
+    if not c:
+        raise HTTPException(404, "Challan not found")
+    d = dict(c)
+    d["items"] = dicts(conn.execute("SELECT * FROM challan_items WHERE challan_id=?", (ch_id,)).fetchall())
+    return d
+
+
+@app.post("/api/challans")
+def create_challan(b: ChallanIn, shop_id: int = Depends(shop_of)):
+    """Delivery challan: stock decreases, no billing."""
+    conn = get_db()
+    try:
+        pname = b.party_name
+        if b.party_id:
+            p = conn.execute("SELECT id, name FROM parties WHERE id=? AND shop_id=?",
+                             (b.party_id, shop_id)).fetchone()
+            if not p:
+                raise HTTPException(404, "Party not found")
+            pname = p["name"]
+        d = b.date or today()
+        lines = []
+        for it in b.items:
+            pr = conn.execute("SELECT * FROM products WHERE id=? AND shop_id=?",
+                              (it.product_id, shop_id)).fetchone()
+            if not pr:
+                raise HTTPException(404, f"Product #{it.product_id} not found")
+            if pr["stock_qty"] < it.qty:
+                raise HTTPException(400, f"'{pr['name']}' — not enough stock (available: {pr['stock_qty']})")
+            lines.append((pr, it.qty))
+        ch_no = next_challan_no(conn, shop_id)
+        cur = conn.execute(
+            """INSERT INTO challans(shop_id,challan_no,party_id,party_name,date,vehicle_no)
+               VALUES (?,?,?,?,?,?)""",
+            (shop_id, ch_no, b.party_id, pname, d, b.vehicle_no))
+        ch_id = cur.lastrowid
+        for pr, qty in lines:
+            conn.execute(
+                "INSERT INTO challan_items(challan_id,product_id,product_name,qty) VALUES (?,?,?,?)",
+                (ch_id, pr["id"], pr["name"], qty))
+            conn.execute("UPDATE products SET stock_qty = stock_qty - ? WHERE id=?", (qty, pr["id"]))
+        conn.commit()
+        return get_challan(conn, shop_id, ch_id)
+    finally:
+        conn.close()
+
+
+@app.get("/api/challans")
+def list_challans(shop_id: int = Depends(shop_of)):
+    conn = get_db()
+    try:
+        rows = conn.execute("SELECT * FROM challans WHERE shop_id=? ORDER BY date DESC, id DESC LIMIT 200",
+                            (shop_id,)).fetchall()
+        return dicts(rows)
+    finally:
+        conn.close()
+
+
+@app.get("/api/challans/{ch_id}")
+def challan_detail(ch_id: int, shop_id: int = Depends(shop_of)):
+    conn = get_db()
+    try:
+        return get_challan(conn, shop_id, ch_id)
+    finally:
+        conn.close()
+
+
+@app.post("/api/challans/{ch_id}/convert")
+def convert_challan(ch_id: int, shop_id: int = Depends(shop_of)):
+    """Convert a challan to a bill (stock already decreased at challan time)."""
+    conn = get_db()
+    try:
+        c = conn.execute("SELECT * FROM challans WHERE id=? AND shop_id=?", (ch_id, shop_id)).fetchone()
+        if not c:
+            raise HTTPException(404, "Challan not found")
+        if c["status"] != "open":
+            raise HTTPException(400, "This challan has already been billed")
+        items = conn.execute("SELECT * FROM challan_items WHERE challan_id=?", (ch_id,)).fetchall()
+        bill_no = next_bill_no(conn, shop_id)
+        subtotal = 0.0
+        lines = []
+        for it in items:
+            pr = conn.execute("SELECT * FROM products WHERE id=? AND shop_id=?",
+                              (it["product_id"], shop_id)).fetchone()
+            price = pr["sale_price"] if pr else 0
+            cost = pr["purchase_price"] if pr else 0
+            lt = round(price * it["qty"], 2)
+            subtotal += lt
+            lines.append((it, price, cost, lt))
+        subtotal = round(subtotal, 2)
+        cur = conn.execute(
+            """INSERT INTO bills(shop_id,bill_no,party_id,party_name,date,subtotal,discount,total,paid,mode)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (shop_id, bill_no, c["party_id"], c["party_name"], today(),
+             subtotal, 0, subtotal, 0, "cash"))
+        bill_id = cur.lastrowid
+        for it, price, cost, lt in lines:
+            conn.execute(
+                "INSERT INTO bill_items(bill_id,product_id,product_name,qty,price,cost,total) VALUES (?,?,?,?,?,?,?)",
+                (bill_id, it["product_id"], it["product_name"], it["qty"], price, cost, lt))
+        conn.execute("UPDATE challans SET status='billed' WHERE id=?", (ch_id,))
+        conn.commit()
+        return get_bill(conn, shop_id, bill_id)
+    finally:
+        conn.close()
+
+
+# ---------- bank accounts ----------
+
+def bank_balance(conn, shop_id: int, acc_id: int) -> float:
+    acc = conn.execute("SELECT opening_balance FROM bank_accounts WHERE id=? AND shop_id=?",
+                       (acc_id, shop_id)).fetchone()
+    if not acc:
+        raise HTTPException(404, "Bank account not found")
+    inn = conn.execute("SELECT COALESCE(SUM(amount),0) FROM bank_txns WHERE account_id=? AND kind='in'",
+                       (acc_id,)).fetchone()[0]
+    out = conn.execute("SELECT COALESCE(SUM(amount),0) FROM bank_txns WHERE account_id=? AND kind='out'",
+                       (acc_id,)).fetchone()[0]
+    return round(acc["opening_balance"] + inn - out, 2)
+
+
+@app.post("/api/bank-accounts")
+def add_bank_account(b: BankAccountIn, shop_id: int = Depends(shop_of)):
+    if not b.name.strip():
+        raise HTTPException(400, "Account name is required")
+    conn = get_db()
+    try:
+        cur = conn.execute(
+            "INSERT INTO bank_accounts(shop_id,name,bank_name,account_no,opening_balance) VALUES (?,?,?,?,?)",
+            (shop_id, b.name.strip(), b.bank_name.strip(), b.account_no.strip(), b.opening_balance))
+        conn.commit()
+        acc_id = cur.lastrowid
+        d = dict(conn.execute("SELECT * FROM bank_accounts WHERE id=?", (acc_id,)).fetchone())
+        d["balance"] = bank_balance(conn, shop_id, acc_id)
+        return d
+    finally:
+        conn.close()
+
+
+@app.get("/api/bank-accounts")
+def list_bank_accounts(shop_id: int = Depends(shop_of)):
+    conn = get_db()
+    try:
+        rows = conn.execute("SELECT * FROM bank_accounts WHERE shop_id=? ORDER BY id", (shop_id,)).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["balance"] = bank_balance(conn, shop_id, r["id"])
+            out.append(d)
+        return out
+    finally:
+        conn.close()
+
+
+@app.get("/api/bank-accounts/{acc_id}")
+def bank_account_detail(acc_id: int, shop_id: int = Depends(shop_of)):
+    conn = get_db()
+    try:
+        acc = conn.execute("SELECT * FROM bank_accounts WHERE id=? AND shop_id=?",
+                           (acc_id, shop_id)).fetchone()
+        if not acc:
+            raise HTTPException(404, "Bank account not found")
+        d = dict(acc)
+        d["balance"] = bank_balance(conn, shop_id, acc_id)
+        d["txns"] = dicts(conn.execute(
+            "SELECT * FROM bank_txns WHERE account_id=? ORDER BY date DESC, id DESC LIMIT 200", (acc_id,)).fetchall())
+        return d
+    finally:
+        conn.close()
+
+
+@app.post("/api/bank-accounts/{acc_id}/txns")
+def add_bank_txn(acc_id: int, b: BankTxnIn, shop_id: int = Depends(shop_of)):
+    if b.kind not in ("in", "out"):
+        raise HTTPException(400, "kind must be 'in' or 'out'")
+    conn = get_db()
+    try:
+        bank_balance(conn, shop_id, acc_id)  # validates account exists
+        conn.execute(
+            "INSERT INTO bank_txns(shop_id,account_id,date,kind,amount,note) VALUES (?,?,?,?,?,?)",
+            (shop_id, acc_id, b.date or today(), b.kind, b.amount, b.note.strip()))
+        conn.commit()
+        return {"balance": bank_balance(conn, shop_id, acc_id)}
+    finally:
+        conn.close()
+
+
+@app.delete("/api/bank-accounts/{acc_id}")
+def delete_bank_account(acc_id: int, shop_id: int = Depends(shop_of)):
+    conn = get_db()
+    try:
+        conn.execute("DELETE FROM bank_txns WHERE account_id=?", (acc_id,))
+        cur = conn.execute("DELETE FROM bank_accounts WHERE id=? AND shop_id=?", (acc_id, shop_id))
+        conn.commit()
+        if not cur.rowcount:
+            raise HTTPException(404, "Bank account not found")
+        return {"ok": True}
     finally:
         conn.close()
 
