@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#07a5c2">
+<meta name="theme-color" content="#ffffff">
 <title>Karobar — Shop Accounting</title>
 <link rel="manifest" href="/static/manifest.json">
 <link rel="stylesheet" href="/static/style.css">
@@ -44,22 +44,29 @@
 </div>
 
 <div id="app-screen" style="display:none">
-  <header class="topbar">
-    <button class="hamb" onclick="openDrawer()" aria-label="Menu"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18"/><path d="M3 12h18"/><path d="M3 18h18"/></svg></button>
-    <h1>Karobar</h1>
-    <span class="top-sp"></span>
+  <header class="vtop">
+    <button class="shop-ic" onclick="go('v-home')" aria-label="Home">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#1a9bd4" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l1.5-5h15L21 9"/><path d="M3 9h18v2a3 3 0 0 1-3 3 3 3 0 0 1-3-3 3 3 0 0 1-3 3 3 3 0 0 1-3-3 3 3 0 0 1-3 3 3 3 0 0 1-3-3z"/><path d="M5 12v8h14v-8"/><path d="M9 20v-5h6v5"/></svg>
+    </button>
+    <h1 id="shop-name">KAROBAR</h1>
+    <button class="filter-ic" onclick="headFilter()" aria-label="Filter">
+      <svg width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#f5b301"/><path d="M7 8h10l-3.5 4.2V16l-3 1.6V12.2z" fill="#fff"/></svg>
+    </button>
+    <button class="hicon" onclick="go('v-reminders')" aria-label="Notifications">
+      <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="#5b6472" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+    </button>
+    <button class="hicon" onclick="go('v-settings')" aria-label="Settings">
+      <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="#5b6472" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
   </header>
-  <div id="drawer-bg" class="drawer-bg" onclick="closeDrawer()"></div>
-  <aside id="drawer" class="drawer">
-    <div class="drawer-head">
-      <img class="logo" src="/static/icon.svg" alt="">
-      <div><div class="t">Karobar</div><div class="s" id="drawer-shop">—</div></div>
-    </div>
-    <div id="drawer-menu"></div>
-  </aside>
 
   <section class="view" id="v-home"></section>
+  <section class="view" id="v-dashboard"></section>
+  <section class="view" id="v-items"></section>
+  <section class="view" id="v-menu"></section>
   <section class="view" id="v-sale"></section>
+  <section class="view" id="v-sale-new"></section>
+  <section class="view" id="v-add-items"></section>
   <section class="view" id="v-bill-detail"></section>
   <section class="view" id="v-est-detail"></section>
   <section class="view" id="v-kharid"></section>
@@ -67,7 +74,6 @@
   <section class="view" id="v-stock"></section>
   <section class="view" id="v-khata"></section>
   <section class="view" id="v-party"></section>
-  <section class="view" id="v-more"></section>
   <section class="view" id="v-challans"></section>
   <section class="view" id="v-challan-detail"></section>
   <section class="view" id="v-banks"></section>
@@ -78,12 +84,11 @@
   <section class="view" id="v-reports"></section>
   <section class="view" id="v-settings"></section>
 
-  <nav class="bottom" id="bottom-nav">
-    <button data-v="v-home" class="active" onclick="go('v-home')"><span class="ic"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg></span>Home</button>
-    <button data-v="v-sale" onclick="go('v-sale')"><span class="ic"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1z"/><path d="M8 7h8"/><path d="M8 11h8"/><path d="M8 15h5"/></svg></span>Sale</button>
-    <button data-v="v-kharid" onclick="go('v-kharid')"><span class="ic"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg></span>Purchases</button>
-    <button data-v="v-stock" onclick="go('v-stock')"><span class="ic"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.27 6.96L12 12.01l8.73-5.05"/><path d="M12 22.08V12"/></svg></span>Stock</button>
-    <button data-v="v-more" onclick="go('v-more')"><span class="ic"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.7" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.7" fill="currentColor" stroke="none"/></svg></span>More</button>
+  <nav class="vnav" id="bottom-nav">
+    <button data-v="v-home" class="active" onclick="go('v-home')"><span class="ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg></span>Home</button>
+    <button data-v="v-dashboard" onclick="go('v-dashboard')"><span class="ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg></span>Dashboard</button>
+    <button data-v="v-items" onclick="go('v-items')"><span class="ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.27 6.96L12 12.01l8.73-5.05"/><path d="M12 22.08V12"/></svg></span>Items</button>
+    <button data-v="v-menu" onclick="go('v-menu')"><span class="ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M7 12h18"/><path d="M3 18h18"/></svg></span>Menu</button>
   </nav>
 </div>
 
