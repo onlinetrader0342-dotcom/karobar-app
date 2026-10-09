@@ -115,6 +115,23 @@ table.tbl th { color: var(--muted); font-weight: 600; font-size: 12px; }
   border-radius: 12px; margin-bottom: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.06); cursor: pointer; }
 .menu-item .ic { font-size: 22px; }
 .menu-item .t { font-weight: 600; }
+/* ---- v2 additions ---- */
+.quick-row { display: flex; gap: 8px; margin-bottom: 12px; }
+.quick {
+  flex: 1; background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  padding: 12px 6px; font-size: 12px; font-weight: 700; color: var(--teal-dark); cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
+}
+.quick .ic { font-size: 22px; }
+.quick:active { background: #eef2f1; }
+.tabs { display: flex; gap: 8px; margin: 0 0 12px; }
+.line { display: flex; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.line .grow { flex: 1; }
+.line input { width: 68px; padding: 8px; font-size: 14px; }
+.line .s { font-size: 11px; color: var(--muted); }
+.icon-btn { border: 0; background: #eef2f1; border-radius: 8px; padding: 6px 10px; font-size: 14px; cursor: pointer; }
+.icon-btn:active { background: #fee2e2; }
 @media print {
   body { padding: 0; background: #fff; }
   header.topbar, nav.bottom, .fab, .no-print { display: none !important; }
