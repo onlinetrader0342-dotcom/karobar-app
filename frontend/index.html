@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ur">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f766e">
+<title>Karobar — Dukan ka Hisab Kitab</title>
+<link rel="manifest" href="/static/manifest.json">
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="/static/icon.svg">
+</head>
+<body>
+<div id="auth-screen" style="display:none">
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <img class="logo" src="/static/icon.svg" alt="Karobar">
+      <h2 style="margin:8px 0 2px">Karobar</h2>
+      <div style="color:#6b7280;font-size:13px">Dukan ka hisab kitab — billing, stock, khata</div>
+      <div class="tabs">
+        <button id="tab-login" class="active" onclick="showAuthTab('login')">Login</button>
+        <button id="tab-signup" onclick="showAuthTab('signup')">Naya Account</button>
+      </div>
+      <div id="auth-login">
+        <label class="f" style="text-align:left">Mobile Number</label>
+        <input id="login-phone" inputmode="tel" placeholder="03xxxxxxxxx">
+        <label class="f" style="text-align:left">Password</label>
+        <input id="login-pass" type="password" placeholder="Password">
+      </div>
+      <div id="auth-signup" style="display:none">
+        <label class="f" style="text-align:left">Dukan ka Naam</label>
+        <input id="su-shop" placeholder="Masalan: Imran Electric Store">
+        <label class="f" style="text-align:left">Apka Naam</label>
+        <input id="su-owner" placeholder="Apka naam">
+        <label class="f" style="text-align:left">Mobile Number</label>
+        <input id="su-phone" inputmode="tel" placeholder="03xxxxxxxxx">
+        <label class="f" style="text-align:left">Password</label>
+        <input id="su-pass" type="password" placeholder="Kam az kam 4 harf">
+      </div>
+      <div class="err" id="auth-err"></div>
+      <button class="btn primary block" onclick="doAuth()">Dakhil Hon</button>
+      <div style="font-size:12px;color:#6b7280;margin-top:12px">Demo: 03219807144 / demo1234</div>
+    </div>
+  </div>
+</div>
+
+<div id="app-screen" style="display:none">
+  <header class="topbar">
+    <img class="logo" src="/static/icon.svg" alt="">
+    <div><h1>Karobar</h1><div class="shop" id="shop-name">—</div></div>
+  </header>
+
+  <section class="view" id="v-home"></section>
+  <section class="view" id="v-bills"></section>
+  <section class="view" id="v-bill-detail"></section>
+  <section class="view" id="v-stock"></section>
+  <section class="view" id="v-khata"></section>
+  <section class="view" id="v-party"></section>
+  <section class="view" id="v-more"></section>
+  <section class="view" id="v-cash"></section>
+  <section class="view" id="v-reports"></section>
+  <section class="view" id="v-settings"></section>
+
+  <nav class="bottom" id="bottom-nav">
+    <button data-v="v-home" class="active" onclick="go('v-home')"><span class="ic">🏠</span>Home</button>
+    <button data-v="v-bills" onclick="go('v-bills')"><span class="ic">🧾</span>Bill</button>
+    <button data-v="v-stock" onclick="go('v-stock')"><span class="ic">📦</span>Stock</button>
+    <button data-v="v-khata" onclick="go('v-khata')"><span class="ic">📒</span>Khata</button>
+    <button data-v="v-more" onclick="go('v-more')"><span class="ic">⋯</span>Aur</button>
+  </nav>
+</div>
+
+<div id="modal-root"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>
