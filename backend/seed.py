@@ -10,20 +10,20 @@ init_db()
 conn = get_db()
 cur = conn.cursor()
 
-# demo shop (pehle se ho to skip)
+# demo shop (skip if exists)
 row = cur.execute("SELECT id FROM shops WHERE phone=?", ("03219807144",)).fetchone()
 if row:
     shop_id = row["id"]
-    print("demo shop pehle se hai, id:", shop_id)
+    print("demo shop already exists, id:", shop_id)
 else:
     cur.execute(
         """INSERT INTO shops(name, owner_name, phone, password_hash, address, city, receipt_header)
            VALUES (?,?,?,?,?,?,?)""",
         ("Imran Electric Store", "Azhar Rashid", "03219807144", hash_password("demo1234"),
          "CNG Adda, Wagon Stand, Mandian, Abbottabad", "Abbottabad",
-         "Shukriya! Dobara tashreef laein"))
+         "Thank you! Visit again"))
     shop_id = cur.lastrowid
-    print("demo shop ban gaya, id:", shop_id)
+    print("demo shop created, id:", shop_id)
 
 # products
 products = [
@@ -91,7 +91,7 @@ def make_bill(bdate, party_name, lines, discount=0, paid=0):
     return bid
 
 
-# sample history (agar bills nahi hain)
+# sample history (if no bills)
 if cur.execute("SELECT COUNT(*) FROM bills WHERE shop_id=?", (shop_id,)).fetchone()[0] == 0:
     t = date.today()
     make_bill((t - timedelta(days=2)).isoformat(), "Atif", [("Ostric LED Bulb 12W", 10)], paid=1800)
@@ -100,17 +100,17 @@ if cur.execute("SELECT COUNT(*) FROM bills WHERE shop_id=?", (shop_id,)).fetchon
     make_bill((t - timedelta(days=1)).isoformat(), "", [("OSAKA LED Bulb 12W", 6)], paid=990)
     make_bill(t.isoformat(), "Atif", [("Ostric LED Bulb 18W", 2), ("Multi Plug", 1)], paid=0)
     make_bill(t.isoformat(), "", [("2-Pin Shoe", 5)], paid=325)
-    # payment: Atif se wasooli
+    # payment: collection from Atif
     cur.execute("INSERT INTO payments(shop_id,party_id,date,amount,direction,mode,note) VALUES (?,?,?,?,?,?,?)",
-                (shop_id, party_ids["Atif"], t.isoformat(), 1000, "lena", "cash", "Pehli wasooli"))
+                (shop_id, party_ids["Atif"], t.isoformat(), 1000, "lena", "cash", "First collection"))
     cur.execute("INSERT INTO cash_txns(shop_id,date,kind,amount,category,note,ref) VALUES (?,?,?,?,?,?,?)",
-                (shop_id, t.isoformat(), "in", 1000, "party", "Atif — wasooli", f"party:{party_ids['Atif']}"))
-    # aaj ka kharcha
+                (shop_id, t.isoformat(), "in", 1000, "party", "Atif — received", f"party:{party_ids['Atif']}"))
+    # today's expense
     cur.execute("INSERT INTO cash_txns(shop_id,date,kind,amount,category,note) VALUES (?,?,?,?,?,?)",
-                (shop_id, t.isoformat(), "out", 500, "kharcha", "Dukan ka kharcha (chai + safai)"))
-    print("sample bills/payments ban gaye")
+                (shop_id, t.isoformat(), "out", 500, "expense", "Shop expense (tea + cleaning)"))
+    print("sample bills/payments created")
 
-# sample kharid (supplier se) — agar purchases nahi hain
+# sample purchase (from supplier) — if no purchases
 if cur.execute("SELECT COUNT(*) FROM purchases WHERE shop_id=?", (shop_id,)).fetchone()[0] == 0:
     t = date.today()
     sup = party_ids["Shahid (Ostric Supplier)"]
@@ -129,11 +129,11 @@ if cur.execute("SELECT COUNT(*) FROM purchases WHERE shop_id=?", (shop_id,)).fet
         cur.execute("UPDATE products SET stock_qty = stock_qty + ?, purchase_price = ? WHERE id=?",
                     (qty, price, pr["id"]))
     cur.execute("INSERT INTO cash_txns(shop_id,date,kind,amount,category,note,ref) VALUES (?,?,?,?,?,?,?)",
-                (shop_id, (t - timedelta(days=3)).isoformat(), "out", 5000, "kharid",
+                (shop_id, (t - timedelta(days=3)).isoformat(), "out", 5000, "purchase",
                  f"Kharid {pur_no} — Shahid (Ostric Supplier)", f"purchase:{pur_id}"))
-    print("sample purchase ban gaya")
+    print("sample purchase created")
 
-# sample andaza (quotation) — agar estimates nahi hain
+# sample estimate (quotation) — if no estimates
 if cur.execute("SELECT COUNT(*) FROM estimates WHERE shop_id=?", (shop_id,)).fetchone()[0] == 0:
     t = date.today()
     n = cur.execute("SELECT COUNT(*) FROM estimates WHERE shop_id=?", (shop_id,)).fetchone()[0]
@@ -154,8 +154,8 @@ if cur.execute("SELECT COUNT(*) FROM estimates WHERE shop_id=?", (shop_id,)).fet
     for pr, qty, price, lt in items:
         cur.execute("INSERT INTO estimate_items(estimate_id,product_id,product_name,qty,price,total) VALUES (?,?,?,?,?,?)",
                     (est_id, pr["id"], pr["name"], qty, price, lt))
-    print("sample estimate ban gaya")
+    print("sample estimate created")
 
 conn.commit()
 conn.close()
-print("seed mukammal")
+print("seed complete")
