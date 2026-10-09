@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0b8fc5">
+<meta name="theme-color" content="#07a5c2">
 <title>Karobar — Shop Accounting</title>
 <link rel="manifest" href="/static/manifest.json">
 <link rel="stylesheet" href="/static/style.css">
@@ -45,7 +45,7 @@
 
 <div id="app-screen" style="display:none">
   <header class="topbar">
-    <button class="hamb" onclick="openDrawer()" aria-label="Menu">☰</button>
+    <button class="hamb" onclick="openDrawer()" aria-label="Menu"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18"/><path d="M3 12h18"/><path d="M3 18h18"/></svg></button>
     <h1>Karobar</h1>
     <span class="top-sp"></span>
   </header>
@@ -79,11 +79,11 @@
   <section class="view" id="v-settings"></section>
 
   <nav class="bottom" id="bottom-nav">
-    <button data-v="v-home" class="active" onclick="go('v-home')"><span class="ic">🏠</span>Home</button>
-    <button data-v="v-sale" onclick="go('v-sale')"><span class="ic">🧾</span>Sale</button>
-    <button data-v="v-kharid" onclick="go('v-kharid')"><span class="ic">🛒</span>Purchases</button>
-    <button data-v="v-stock" onclick="go('v-stock')"><span class="ic">📦</span>Stock</button>
-    <button data-v="v-more" onclick="go('v-more')"><span class="ic">⋯</span>More</button>
+    <button data-v="v-home" class="active" onclick="go('v-home')"><span class="ic"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg></span>Home</button>
+    <button data-v="v-sale" onclick="go('v-sale')"><span class="ic"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1z"/><path d="M8 7h8"/><path d="M8 11h8"/><path d="M8 15h5"/></svg></span>Sale</button>
+    <button data-v="v-kharid" onclick="go('v-kharid')"><span class="ic"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg></span>Purchases</button>
+    <button data-v="v-stock" onclick="go('v-stock')"><span class="ic"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.27 6.96L12 12.01l8.73-5.05"/><path d="M12 22.08V12"/></svg></span>Stock</button>
+    <button data-v="v-more" onclick="go('v-more')"><span class="ic"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.7" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.7" fill="currentColor" stroke="none"/></svg></span>More</button>
   </nav>
 </div>
 
