@@ -38,15 +38,18 @@ def shop_of(authorization: Optional[str] = Header(default=None)) -> int:
 
 def party_balance(conn, shop_id: int, party_id: int, ptype: str) -> float:
     """Deterministic balance. customer: + matlab gahak se LENA hai. supplier: + matlab supplier ko DENA hai."""
-    billed = conn.execute(
-        "SELECT COALESCE(SUM(total - paid), 0) FROM bills WHERE shop_id=? AND party_id=?",
-        (shop_id, party_id)).fetchone()[0]
     if ptype == "customer":
+        billed = conn.execute(
+            "SELECT COALESCE(SUM(total - paid), 0) FROM bills WHERE shop_id=? AND party_id=?",
+            (shop_id, party_id)).fetchone()[0]
         got = conn.execute(
             "SELECT COALESCE(SUM(amount),0) FROM payments WHERE shop_id=? AND party_id=? AND direction='lena'",
             (shop_id, party_id)).fetchone()[0]
         return round(billed - got, 2)
     else:
+        billed = conn.execute(
+            "SELECT COALESCE(SUM(total - paid), 0) FROM purchases WHERE shop_id=? AND party_id=?",
+            (shop_id, party_id)).fetchone()[0]
         paid_out = conn.execute(
             "SELECT COALESCE(SUM(amount),0) FROM payments WHERE shop_id=? AND party_id=? AND direction='dena'",
             (shop_id, party_id)).fetchone()[0]
@@ -80,6 +83,14 @@ class ProductIn(BaseModel):
     stock_qty: float = 0
     low_stock_level: float = 5
     unit: str = "naq"
+    barcode: str = ""
+    expiry_date: str = ""
+    category: str = ""
+
+
+class StockAdjustIn(BaseModel):
+    qty_change: float  # + stock me izafa, - kami
+    note: str = ""
 
 
 class PartyIn(BaseModel):
@@ -110,6 +121,36 @@ class BillIn(BaseModel):
     discount: float = 0
     paid: float = 0
     mode: str = "cash"
+    date: Optional[str] = None
+
+
+class PurchaseItemIn(BaseModel):
+    product_id: int
+    qty: float = Field(gt=0)
+    price: Optional[float] = None  # None = product ka purchase_price
+
+
+class PurchaseIn(BaseModel):
+    party_id: Optional[int] = None
+    party_name: str = ""
+    items: list[PurchaseItemIn] = Field(min_length=1)
+    discount: float = 0
+    paid: float = 0
+    mode: str = "cash"
+    date: Optional[str] = None
+
+
+class EstimateItemIn(BaseModel):
+    product_id: int
+    qty: float = Field(gt=0)
+    price: Optional[float] = None  # None = product ka sale_price
+
+
+class EstimateIn(BaseModel):
+    party_id: Optional[int] = None
+    party_name: str = ""
+    items: list[EstimateItemIn] = Field(min_length=1)
+    discount: float = 0
     date: Optional[str] = None
 
 
@@ -222,9 +263,11 @@ def add_product(b: ProductIn, shop_id: int = Depends(shop_of)):
     conn = get_db()
     try:
         cur = conn.execute(
-            """INSERT INTO products(shop_id,name,sku,purchase_price,sale_price,stock_qty,low_stock_level,unit)
-               VALUES (?,?,?,?,?,?,?,?)""",
-            (shop_id, b.name, b.sku, b.purchase_price, b.sale_price, b.stock_qty, b.low_stock_level, b.unit))
+            """INSERT INTO products(shop_id,name,sku,purchase_price,sale_price,stock_qty,low_stock_level,unit,
+                                    barcode,expiry_date,category)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            (shop_id, b.name, b.sku, b.purchase_price, b.sale_price, b.stock_qty, b.low_stock_level, b.unit,
+             b.barcode, b.expiry_date, b.category))
         conn.commit()
         row = conn.execute("SELECT * FROM products WHERE id=?", (cur.lastrowid,)).fetchone()
         return dict(row)
@@ -237,9 +280,11 @@ def update_product(pid: int, b: ProductIn, shop_id: int = Depends(shop_of)):
     conn = get_db()
     try:
         conn.execute(
-            """UPDATE products SET name=?,sku=?,purchase_price=?,sale_price=?,stock_qty=?,low_stock_level=?,unit=?
+            """UPDATE products SET name=?,sku=?,purchase_price=?,sale_price=?,stock_qty=?,low_stock_level=?,unit=?,
+                                  barcode=?,expiry_date=?,category=?
                WHERE id=? AND shop_id=?""",
-            (b.name, b.sku, b.purchase_price, b.sale_price, b.stock_qty, b.low_stock_level, b.unit, pid, shop_id))
+            (b.name, b.sku, b.purchase_price, b.sale_price, b.stock_qty, b.low_stock_level, b.unit,
+             b.barcode, b.expiry_date, b.category, pid, shop_id))
         conn.commit()
         row = conn.execute("SELECT * FROM products WHERE id=? AND shop_id=?", (pid, shop_id)).fetchone()
         if not row:
@@ -260,6 +305,240 @@ def delete_product(pid: int, shop_id: int = Depends(shop_of)):
         conn.execute("DELETE FROM products WHERE id=? AND shop_id=?", (pid, shop_id))
         conn.commit()
         return {"ok": True}
+    finally:
+        conn.close()
+
+
+@app.post("/api/products/{pid}/adjust")
+def adjust_stock(pid: int, b: StockAdjustIn, shop_id: int = Depends(shop_of)):
+    """Stock adjustment: chori/toot-phoot/ginti ka farq. qty_change + ya -."""
+    conn = get_db()
+    try:
+        pr = conn.execute("SELECT * FROM products WHERE id=? AND shop_id=?", (pid, shop_id)).fetchone()
+        if not pr:
+            raise HTTPException(404, "Product nahi mila")
+        new_qty = round(pr["stock_qty"] + b.qty_change, 2)
+        if new_qty < 0:
+            raise HTTPException(400, "Stock 0 se kam nahi ho sakta")
+        conn.execute("UPDATE products SET stock_qty=? WHERE id=?", (new_qty, pid))
+        conn.execute(
+            "INSERT INTO cash_txns(shop_id,date,kind,amount,category,note,ref) VALUES (?,?,'out',0,'adjustment',?,?)",
+            (shop_id, today(), f"Stock adjust: {pr['name']} {pr['stock_qty']} → {new_qty}. {b.note}".strip(),
+             f"adjust:{pid}"))
+        conn.commit()
+        return {"ok": True, "stock_qty": new_qty}
+    finally:
+        conn.close()
+
+
+# ---------- purchases (kharid) ----------
+
+def next_purchase_no(conn, shop_id: int) -> str:
+    n = conn.execute("SELECT COUNT(*) FROM purchases WHERE shop_id=?", (shop_id,)).fetchone()[0]
+    return f"PUR-{n + 1:05d}"
+
+
+def get_purchase(conn, shop_id: int, pur_id: int):
+    pur = conn.execute("SELECT * FROM purchases WHERE id=? AND shop_id=?", (pur_id, shop_id)).fetchone()
+    if not pur:
+        raise HTTPException(404, "Kharid bill nahi mila")
+    d = dict(pur)
+    d["items"] = dicts(conn.execute("SELECT * FROM purchase_items WHERE purchase_id=?", (pur_id,)).fetchall())
+    d["baqaya"] = round(d["total"] - d["paid"], 2)
+    return d
+
+
+@app.post("/api/purchases")
+def create_purchase(b: PurchaseIn, shop_id: int = Depends(shop_of)):
+    conn = get_db()
+    try:
+        pname = b.party_name
+        if b.party_id:
+            p = conn.execute("SELECT id, name FROM parties WHERE id=? AND shop_id=?",
+                             (b.party_id, shop_id)).fetchone()
+            if not p:
+                raise HTTPException(404, "Party nahi mili")
+            pname = p["name"]
+        d = b.date or today()
+        subtotal = 0.0
+        lines = []
+        for it in b.items:
+            pr = conn.execute("SELECT * FROM products WHERE id=? AND shop_id=?",
+                              (it.product_id, shop_id)).fetchone()
+            if not pr:
+                raise HTTPException(404, f"Product #{it.product_id} nahi mila")
+            price = it.price if it.price is not None else pr["purchase_price"]
+            lt = round(price * it.qty, 2)
+            subtotal += lt
+            lines.append((pr, it.qty, price, lt))
+        subtotal = round(subtotal, 2)
+        discount = round(min(b.discount, subtotal), 2)
+        total = round(subtotal - discount, 2)
+        paid = round(min(b.paid, total), 2)
+        bill_no = next_purchase_no(conn, shop_id)
+        cur = conn.execute(
+            """INSERT INTO purchases(shop_id,bill_no,party_id,party_name,date,subtotal,discount,total,paid,mode)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (shop_id, bill_no, b.party_id, pname, d, subtotal, discount, total, paid, b.mode))
+        pur_id = cur.lastrowid
+        for pr, qty, price, lt in lines:
+            conn.execute(
+                "INSERT INTO purchase_items(purchase_id,product_id,product_name,qty,price,total) VALUES (?,?,?,?,?,?)",
+                (pur_id, pr["id"], pr["name"], qty, price, lt))
+            # kharid se stock BARHTA hai; kharid rate bhi update (aakhri kharid rate)
+            conn.execute("UPDATE products SET stock_qty = stock_qty + ?, purchase_price = ? WHERE id=?",
+                         (qty, price, pr["id"]))
+        if paid > 0:
+            conn.execute(
+                "INSERT INTO cash_txns(shop_id,date,kind,amount,category,note,ref) VALUES (?,?,?,?,?,?,?)",
+                (shop_id, d, "out", paid, "kharid", f"Kharid {bill_no}" + (f" — {pname}" if pname else ""),
+                 f"purchase:{pur_id}"))
+        conn.commit()
+        return get_purchase(conn, shop_id, pur_id)
+    finally:
+        conn.close()
+
+
+@app.get("/api/purchases")
+def list_purchases(shop_id: int = Depends(shop_of)):
+    conn = get_db()
+    try:
+        rows = conn.execute("SELECT * FROM purchases WHERE shop_id=? ORDER BY date DESC, id DESC LIMIT 200",
+                            (shop_id,)).fetchall()
+        out = []
+        for r in rows:
+            dd = dict(r)
+            dd["baqaya"] = round(dd["total"] - dd["paid"], 2)
+            out.append(dd)
+        return out
+    finally:
+        conn.close()
+
+
+@app.get("/api/purchases/{pur_id}")
+def purchase_detail(pur_id: int, shop_id: int = Depends(shop_of)):
+    conn = get_db()
+    try:
+        return get_purchase(conn, shop_id, pur_id)
+    finally:
+        conn.close()
+
+
+# ---------- estimates (andaza / quotation) ----------
+
+def next_est_no(conn, shop_id: int) -> str:
+    n = conn.execute("SELECT COUNT(*) FROM estimates WHERE shop_id=?", (shop_id,)).fetchone()[0]
+    return f"EST-{n + 1:05d}"
+
+
+def get_estimate(conn, shop_id: int, est_id: int):
+    e = conn.execute("SELECT * FROM estimates WHERE id=? AND shop_id=?", (est_id, shop_id)).fetchone()
+    if not e:
+        raise HTTPException(404, "Andaza nahi mila")
+    d = dict(e)
+    d["items"] = dicts(conn.execute("SELECT * FROM estimate_items WHERE estimate_id=?", (est_id,)).fetchall())
+    return d
+
+
+@app.post("/api/estimates")
+def create_estimate(b: EstimateIn, shop_id: int = Depends(shop_of)):
+    conn = get_db()
+    try:
+        pname = b.party_name
+        if b.party_id:
+            p = conn.execute("SELECT id, name FROM parties WHERE id=? AND shop_id=?",
+                             (b.party_id, shop_id)).fetchone()
+            if not p:
+                raise HTTPException(404, "Party nahi mili")
+            pname = p["name"]
+        d = b.date or today()
+        subtotal = 0.0
+        lines = []
+        for it in b.items:
+            pr = conn.execute("SELECT * FROM products WHERE id=? AND shop_id=?",
+                              (it.product_id, shop_id)).fetchone()
+            if not pr:
+                raise HTTPException(404, f"Product #{it.product_id} nahi mila")
+            price = it.price if it.price is not None else pr["sale_price"]
+            lt = round(price * it.qty, 2)
+            subtotal += lt
+            lines.append((pr, it.qty, price, lt))
+        subtotal = round(subtotal, 2)
+        discount = round(min(b.discount, subtotal), 2)
+        total = round(subtotal - discount, 2)
+        est_no = next_est_no(conn, shop_id)
+        cur = conn.execute(
+            """INSERT INTO estimates(shop_id,est_no,party_id,party_name,date,subtotal,discount,total)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (shop_id, est_no, b.party_id, pname, d, subtotal, discount, total))
+        est_id = cur.lastrowid
+        for pr, qty, price, lt in lines:
+            conn.execute(
+                "INSERT INTO estimate_items(estimate_id,product_id,product_name,qty,price,total) VALUES (?,?,?,?,?,?)",
+                (est_id, pr["id"], pr["name"], qty, price, lt))
+        conn.commit()
+        return get_estimate(conn, shop_id, est_id)
+    finally:
+        conn.close()
+
+
+@app.get("/api/estimates")
+def list_estimates(shop_id: int = Depends(shop_of)):
+    conn = get_db()
+    try:
+        rows = conn.execute("SELECT * FROM estimates WHERE shop_id=? ORDER BY date DESC, id DESC LIMIT 200",
+                            (shop_id,)).fetchall()
+        return dicts(rows)
+    finally:
+        conn.close()
+
+
+@app.get("/api/estimates/{est_id}")
+def estimate_detail(est_id: int, shop_id: int = Depends(shop_of)):
+    conn = get_db()
+    try:
+        return get_estimate(conn, shop_id, est_id)
+    finally:
+        conn.close()
+
+
+@app.post("/api/estimates/{est_id}/convert")
+def convert_estimate(est_id: int, shop_id: int = Depends(shop_of)):
+    """Andaza ko pakka bill me badlo (stock kam hota hai, bill banta hai)."""
+    conn = get_db()
+    try:
+        e = conn.execute("SELECT * FROM estimates WHERE id=? AND shop_id=?", (est_id, shop_id)).fetchone()
+        if not e:
+            raise HTTPException(404, "Andaza nahi mila")
+        if e["status"] != "open":
+            raise HTTPException(400, "Ye andaza pehle se bill me badal chuka hai")
+        items = conn.execute("SELECT * FROM estimate_items WHERE estimate_id=?", (est_id,)).fetchall()
+        # stock check
+        for it in items:
+            pr = conn.execute("SELECT * FROM products WHERE id=? AND shop_id=?",
+                              (it["product_id"], shop_id)).fetchone()
+            if pr and pr["stock_qty"] < it["qty"]:
+                raise HTTPException(400, f"'{pr['name']}' ka stock kam hai (mojood: {pr['stock_qty']})")
+        bill_no = next_bill_no(conn, shop_id)
+        cur = conn.execute(
+            """INSERT INTO bills(shop_id,bill_no,party_id,party_name,date,subtotal,discount,total,paid,mode)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (shop_id, bill_no, e["party_id"], e["party_name"], today(),
+             e["subtotal"], e["discount"], e["total"], 0, "cash"))
+        bill_id = cur.lastrowid
+        for it in items:
+            pr = conn.execute("SELECT * FROM products WHERE id=? AND shop_id=?",
+                              (it["product_id"], shop_id)).fetchone()
+            cost = pr["purchase_price"] if pr else 0
+            conn.execute(
+                "INSERT INTO bill_items(bill_id,product_id,product_name,qty,price,cost,total) VALUES (?,?,?,?,?,?,?)",
+                (bill_id, it["product_id"], it["product_name"], it["qty"], it["price"], cost, it["total"]))
+            if pr:
+                conn.execute("UPDATE products SET stock_qty = stock_qty - ? WHERE id=?",
+                             (it["qty"], pr["id"]))
+        conn.execute("UPDATE estimates SET status='converted' WHERE id=?", (est_id,))
+        conn.commit()
+        return get_bill(conn, shop_id, bill_id)
     finally:
         conn.close()
 
@@ -496,6 +775,8 @@ def dashboard(shop_id: int = Depends(shop_of)):
     try:
         sale = conn.execute("SELECT COALESCE(SUM(total),0) FROM bills WHERE shop_id=? AND date=?",
                             (shop_id, t)).fetchone()[0]
+        kharid = conn.execute("SELECT COALESCE(SUM(total),0) FROM purchases WHERE shop_id=? AND date=?",
+                              (shop_id, t)).fetchone()[0]
         expense = conn.execute(
             "SELECT COALESCE(SUM(amount),0) FROM cash_txns WHERE shop_id=? AND date=? AND kind='out' AND category='kharcha'",
             (shop_id, t)).fetchone()[0]
@@ -507,11 +788,11 @@ def dashboard(shop_id: int = Depends(shop_of)):
                WHERE b.shop_id=? AND pt.type='customer'""",
             (shop_id, shop_id)).fetchone()[0]
         dena = conn.execute(
-            """SELECT COALESCE(SUM(b.total - b.paid),0) - COALESCE(
+            """SELECT COALESCE(SUM(pu.total - pu.paid),0) - COALESCE(
                  (SELECT SUM(amount) FROM payments p JOIN parties pt ON pt.id=p.party_id
                   WHERE p.shop_id=? AND pt.type='supplier' AND p.direction='dena'), 0)
-               FROM bills b JOIN parties pt ON pt.id=b.party_id
-               WHERE b.shop_id=? AND pt.type='supplier'""",
+               FROM purchases pu JOIN parties pt ON pt.id=pu.party_id
+               WHERE pu.shop_id=? AND pt.type='supplier'""",
             (shop_id, shop_id)).fetchone()[0]
         low = conn.execute(
             "SELECT id, name, stock_qty, low_stock_level, unit FROM products "
@@ -519,10 +800,18 @@ def dashboard(shop_id: int = Depends(shop_of)):
             (shop_id,)).fetchall()
         n_products = conn.execute("SELECT COUNT(*) FROM products WHERE shop_id=?", (shop_id,)).fetchone()[0]
         n_parties = conn.execute("SELECT COUNT(*) FROM parties WHERE shop_id=?", (shop_id,)).fetchone()[0]
+        recent = conn.execute(
+            """SELECT 'bill' AS kind, bill_no AS ref, date, total AS amount, party_name AS name FROM bills WHERE shop_id=?
+               UNION ALL
+               SELECT 'purchase' AS kind, bill_no AS ref, date, total AS amount, party_name AS name FROM purchases WHERE shop_id=?
+               ORDER BY date DESC, ref DESC LIMIT 8""",
+            (shop_id, shop_id)).fetchall()
         return {
-            "aaj_ki_sale": round(sale, 2), "aaj_ka_kharcha": round(expense, 2),
+            "aaj_ki_sale": round(sale, 2), "aaj_ki_kharid": round(kharid, 2),
+            "aaj_ka_kharcha": round(expense, 2),
             "kul_lena": round(lena, 2), "kul_dena": round(dena, 2),
             "low_stock": dicts(low), "products": n_products, "parties": n_parties,
+            "recent": dicts(recent),
         }
     finally:
         conn.close()
@@ -570,6 +859,111 @@ def profit_report(from_date: str, to_date: str = "", shop_id: int = Depends(shop
             (shop_id, from_date, to_date)).fetchall()
         return {"revenue": rev, "cost": cost, "discount": round(disc, 2),
                 "profit": round(rev - cost - disc, 2), "top_products": dicts(top)}
+    finally:
+        conn.close()
+
+
+@app.get("/api/reports/stock")
+def stock_report(shop_id: int = Depends(shop_of)):
+    """Stock report: har product ka stock, kharid value, farokht value."""
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            """SELECT id, name, sku, barcode, category, stock_qty, low_stock_level, unit,
+                      purchase_price, sale_price,
+                      ROUND(stock_qty * purchase_price, 2) AS stock_value_cost,
+                      ROUND(stock_qty * sale_price, 2) AS stock_value_sale
+               FROM products WHERE shop_id=? ORDER BY name""", (shop_id,)).fetchall()
+        tot_cost = conn.execute(
+            "SELECT COALESCE(SUM(stock_qty * purchase_price),0) FROM products WHERE shop_id=?",
+            (shop_id,)).fetchone()[0]
+        tot_sale = conn.execute(
+            "SELECT COALESCE(SUM(stock_qty * sale_price),0) FROM products WHERE shop_id=?",
+            (shop_id,)).fetchone()[0]
+        low_n = conn.execute(
+            "SELECT COUNT(*) FROM products WHERE shop_id=? AND stock_qty <= low_stock_level",
+            (shop_id,)).fetchone()[0]
+        return {"items": dicts(rows), "total_cost_value": round(tot_cost, 2),
+                "total_sale_value": round(tot_sale, 2), "low_count": low_n}
+    finally:
+        conn.close()
+
+
+@app.get("/api/reports/outstanding")
+def outstanding_report(type: str = "customer", shop_id: int = Depends(shop_of)):
+    """Udhaar report: kin parties se lena / ko dena hai, zyada se kam."""
+    if type not in ("customer", "supplier"):
+        raise HTTPException(400, "type customer ya supplier ho")
+    conn = get_db()
+    try:
+        rows = conn.execute("SELECT * FROM parties WHERE shop_id=? AND type=? ORDER BY name",
+                            (shop_id, type)).fetchall()
+        out = []
+        total = 0.0
+        for r in rows:
+            bal = party_balance(conn, shop_id, r["id"], r["type"])
+            if bal > 0:
+                d = dict(r)
+                d["balance"] = bal
+                out.append(d)
+                total += bal
+        out.sort(key=lambda x: x["balance"], reverse=True)
+        return {"type": type, "parties": out, "total": round(total, 2)}
+    finally:
+        conn.close()
+
+
+@app.get("/api/reports/expenses")
+def expenses_report(from_date: str, to_date: str = "", shop_id: int = Depends(shop_of)):
+    """Kharchay report: category-wise kharcha."""
+    to_date = to_date or today()
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            """SELECT category, COUNT(*) AS n, COALESCE(SUM(amount),0) AS total
+               FROM cash_txns WHERE shop_id=? AND kind='out' AND category != 'adjustment'
+               AND date BETWEEN ? AND ?
+               GROUP BY category ORDER BY total DESC""",
+            (shop_id, from_date, to_date)).fetchall()
+        tot = conn.execute(
+            "SELECT COALESCE(SUM(amount),0) FROM cash_txns WHERE shop_id=? AND kind='out' AND category != 'adjustment' AND date BETWEEN ? AND ?",
+            (shop_id, from_date, to_date)).fetchone()[0]
+        return {"by_category": dicts(rows), "total": round(tot, 2)}
+    finally:
+        conn.close()
+
+
+@app.get("/api/reports/daybook")
+def daybook(date: str = "", shop_id: int = Depends(shop_of)):
+    """Day Book: din bhar ke tamam len-den ek jaga."""
+    d = date or today()
+    conn = get_db()
+    try:
+        items = []
+        for r in conn.execute(
+                "SELECT bill_no AS ref, party_name AS name, total AS amount, paid FROM bills WHERE shop_id=? AND date=?",
+                (shop_id, d)).fetchall():
+            items.append({"kind": "sale", "ref": r["ref"], "tafseel": f"Bill {r['ref']}" + (f" — {r['name']}" if r["name"] else ""),
+                          "amount": r["amount"], "date": d})
+        for r in conn.execute(
+                "SELECT bill_no AS ref, party_name AS name, total AS amount FROM purchases WHERE shop_id=? AND date=?",
+                (shop_id, d)).fetchall():
+            items.append({"kind": "purchase", "ref": r["ref"], "tafseel": f"Kharid {r['ref']}" + (f" — {r['name']}" if r["name"] else ""),
+                          "amount": r["amount"], "date": d})
+        for r in conn.execute(
+                """SELECT p.amount, p.direction, p.note, pt.name FROM payments p
+                   JOIN parties pt ON pt.id=p.party_id WHERE p.shop_id=? AND p.date=?""",
+                (shop_id, d)).fetchall():
+            items.append({"kind": "payment", "ref": "", "tafseel":
+                          f"{'Wasooli' if r['direction'] == 'lena' else 'Adaigi'} — {r['name']}" + (f" ({r['note']})" if r["note"] else ""),
+                          "amount": r["amount"], "date": d})
+        for r in conn.execute(
+                "SELECT kind, category, note, amount FROM cash_txns WHERE shop_id=? AND date=? AND ref NOT LIKE 'bill:%' AND ref NOT LIKE 'purchase:%' AND ref NOT LIKE 'party:%' AND ref NOT LIKE 'adjust:%'",
+                (shop_id, d)).fetchall():
+            items.append({"kind": "cash_" + r["kind"], "ref": "",
+                          "tafseel": f"{'Cash In' if r['kind'] == 'in' else 'Kharcha'} — {r['note'] or r['category']}",
+                          "amount": r["amount"], "date": d})
+        return {"date": d, "items": items, "count": len(items)}
     finally:
         conn.close()
 
