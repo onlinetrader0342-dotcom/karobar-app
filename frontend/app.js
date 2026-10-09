@@ -147,7 +147,7 @@ RENDER["v-home"] = async () => {
       ? d.low_stock.map((p) => `<div class="kv"><span>⚠ ${esc(p.name)}</span><span class="num">${p.stock_qty} ${esc(p.unit || "")}</span></div>`).join("")
       : `<div style="color:#6b7280;font-size:13px">All stock is fine</div>`;
     const recent = (d.recent || []).length
-      ? d.recent.map((r) => `<div class="kv"><span>${r.kind === "bill" ? "" : ""} ${esc(r.ref)}${r.name ? " · " + esc(r.name) : ""}</span><span class="num">${rs(r.amount)}</span></div>`).join("")
+      ? d.recent.map((r) => `<div class="kv"><span style="display:inline-flex;align-items:center;gap:6px">${ic(r.kind === "bill" ? "receipt" : "cart", 16)} ${esc(r.ref)}${r.name ? " · " + esc(r.name) : ""}</span><span class="num">${rs(r.amount)}</span></div>`).join("")
       : `<div style="color:#6b7280;font-size:13px">No transactions today</div>`;
     v.innerHTML = `
       <div class="quick-actions">
@@ -157,15 +157,32 @@ RENDER["v-home"] = async () => {
       <div class="grid2">
         <div class="stat"><span class="arrow" style="color:var(--success)">▼</span><div class="lbl">Total Receivable</div><div class="val green">${rs(d.kul_lena)}</div><div class="lbl">From customers</div></div>
         <div class="stat"><span class="arrow" style="color:var(--danger)">▲</span><div class="lbl">Total Payable</div><div class="val red">${rs(d.kul_dena)}</div><div class="lbl">To suppliers</div></div>
-        <div class="stat"><div class="lbl">Today's Sales</div><div class="val primary">${rs(d.aaj_ki_sale)}</div><div class="lbl"> ${niceDate(todayISO())}</div></div>
+        <div class="stat"><div class="lbl">Today's Sales</div><div class="val primary">${rs(d.aaj_ki_sale)}</div><div class="lbl">${niceDate(todayISO())}</div></div>
         <div class="stat"><div class="lbl">Today's Purchases</div><div class="val">${rs(d.aaj_ki_kharid)}</div><div class="lbl">${esc(SHOP ? SHOP.name : "Karobar")}</div></div>
       </div>
       <div style="height:12px"></div>
+      <div class="card">
+        <div class="row" style="justify-content:space-between"><h3 style="margin:0">Cash &amp; Bank</h3><button class="btn sm ghost" onclick="go('v-more')">See All</button></div>
+        <div class="grid2" style="margin-top:8px">
+          <div><div class="lbl">Bank Balance</div><div class="val" style="color:var(--primary-dark);font-size:18px;font-weight:700">${rs(d.bank_total || 0)}</div></div>
+          <div><div class="lbl">Cash in Hand</div><div class="val" style="color:${(d.cash_in_hand || 0) < 0 ? "var(--danger)" : "var(--success)"};font-size:18px;font-weight:700">${rs(d.cash_in_hand || 0)}</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="row" style="justify-content:space-between"><h3 style="margin:0">Most Used Reports</h3><button class="btn sm ghost" onclick="go('v-reports')">See All</button></div>
+        <div class="reptiles">
+          <button class="reptile" onclick="goReport('sale')">${ic("receipt", 26)}<span>Sales</span></button>
+          <button class="reptile" onclick="goReport('profit')">${ic("chart", 26)}<span>Profit</span></button>
+          <button class="reptile" onclick="goReport('stock')">${ic("box", 26)}<span>Stock</span></button>
+          <button class="reptile" onclick="goReport('outstanding')">${ic("ledger", 26)}<span>Dues</span></button>
+        </div>
+      </div>
       <div class="card"><h3>Low Stock</h3>${low}</div>
       <div class="card"><h3>Today's Activity</h3>${recent}</div>`;
   } catch (e) { v.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
 };
 
+function goReport(sub) { REP_SUB = sub; go("v-reports"); }
 function quickBill() { SALE_TAB = "bills"; go("v-sale"); openDocForm("sale"); }
 function quickPurchase() { go("v-kharid"); openDocForm("purchase"); }
 
@@ -175,8 +192,8 @@ RENDER["v-sale"] = async () => {
   const v = $("v-sale");
   v.innerHTML = `
     <div class="tabs">
-      <button class="${SALE_TAB === "bills" ? "active" : ""}" onclick="SALE_TAB='bills';RENDER['v-sale']()"> Bills</button>
-      <button class="${SALE_TAB === "estimates" ? "active" : ""}" onclick="SALE_TAB='estimates';RENDER['v-sale']()"> Estimates</button>
+      <button class="${SALE_TAB === "bills" ? "active" : ""}" onclick="SALE_TAB='bills';RENDER['v-sale']()">Bills</button>
+      <button class="${SALE_TAB === "estimates" ? "active" : ""}" onclick="SALE_TAB='estimates';RENDER['v-sale']()">Estimates</button>
     </div>
     <div id="sale-list"><div class="card">Loading…</div></div>`;
   const box = $("sale-list");
@@ -402,7 +419,7 @@ RENDER["v-bill-detail"] = async (bill_id) => {
     const b = await api("/bills/" + bill_id);
     v.innerHTML = docPaperHTML(b.shop, b.bill_no, b.date, b.party_name, b.items, b.subtotal, b.discount, b.total, b.paid, b.baqaya, b.mode) + `
     <div class="no-print">
-      <button class="btn primary block" onclick="window.print()"> Print</button>
+      <button class="btn primary block" onclick="window.print()">Print</button>
       <button class="btn amber block" onclick="shareDocWhatsApp('bill')"> Send via WhatsApp</button>
       <button class="btn ghost block" onclick="go('v-sale')">← Sales List</button>
     </div>`;
@@ -495,7 +512,7 @@ RENDER["v-kharid-detail"] = async (pid) => {
       <div class="kv"><span><b>Balance Due</b></span><b style="color:${p.baqaya > 0 ? "#dc2626" : "#16a34a"}">${rs(p.baqaya)}</b></div>
     </div>
     <div class="no-print">
-      <button class="btn primary block" onclick="window.print()"> Print</button>
+      <button class="btn primary block" onclick="window.print()">Print</button>
       <button class="btn ghost block" onclick="go('v-kharid')">← Purchases List</button>
     </div>`;
   } catch (e) { v.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
@@ -808,7 +825,7 @@ RENDER["v-challan-detail"] = async (ch_id) => {
       </div>
     </div>
     <div class="no-print">
-      <button class="btn primary block" onclick="window.print()"> Print</button>
+      <button class="btn primary block" onclick="window.print()">Print</button>
       <button class="btn amber block" onclick="shareChallan(${c.id})"> Share on WhatsApp</button>
       ${c.status === "open" ? `<button class="btn outline block" onclick="convertChallan(${c.id})"> Convert to Bill</button>` : ""}
       <button class="btn ghost block" onclick="go('v-challans')">← Challans</button>
@@ -966,8 +983,8 @@ RENDER["v-khata"] = async () => {
     const total = parties.reduce((s, p) => s + (p.balance || 0), 0);
     v.innerHTML = `<button class="fab" onclick="openPartyForm()">+</button>
       <div class="tabs">
-        <button class="${KHATA_TYPE === "customer" ? "active" : ""}" onclick="KHATA_TYPE='customer';RENDER['v-khata']()"> Customers</button>
-        <button class="${KHATA_TYPE === "supplier" ? "active" : ""}" onclick="KHATA_TYPE='supplier';RENDER['v-khata']()"> Suppliers</button>
+        <button class="${KHATA_TYPE === "customer" ? "active" : ""}" onclick="KHATA_TYPE='customer';RENDER['v-khata']()">Customers</button>
+        <button class="${KHATA_TYPE === "supplier" ? "active" : ""}" onclick="KHATA_TYPE='supplier';RENDER['v-khata']()">Suppliers</button>
       </div>
       <div class="card"><div class="kv"><span><b>Total ${KHATA_TYPE === "customer" ? "Receivable" : "Payable"}</b></span><b style="color:${total > 0 ? "#dc2626" : "#16a34a"}">${rs(total)}</b></div></div>` +
       (parties.length ? parties.map((p) => `
@@ -1123,7 +1140,7 @@ async function loadKharchay() {
 
 /* ================= REPORTS ================= */
 let REP_SUB = "sale", REP_FROM = todayISO(), REP_TO = todayISO(), OUT_TYPE = "customer", DB_DATE = todayISO();
-const REP_TABS = [["sale", " Sale"], ["profit", " Profit"], ["stock", " Stock"], ["outstanding", " Outstanding"], ["daybook", " Day Book"]];
+const REP_TABS = [["sale", "Sale"], ["profit", "Profit"], ["stock", "Stock"], ["outstanding", "Outstanding"], ["daybook", "Day Book"]];
 RENDER["v-reports"] = async () => {
   const v = $("v-reports");
   v.innerHTML = `
@@ -1140,9 +1157,9 @@ function repRangeHTML() {
       <div class="grow"><label class="f">To</label><input type="date" id="rep-to" value="${REP_TO}"></div>
     </div>
     <div class="row" style="margin-top:8px">
-      <button class="btn sm ghost" onclick="setRepRange(0)">Aaj</button>
-      <button class="btn sm ghost" onclick="setRepRange(7)">7 Din</button>
-      <button class="btn sm ghost" onclick="setRepRange(30)">30 Din</button>
+      <button class="btn sm ghost" onclick="setRepRange(0)">Today</button>
+      <button class="btn sm ghost" onclick="setRepRange(7)">7 Days</button>
+      <button class="btn sm ghost" onclick="setRepRange(30)">30 Days</button>
       <button class="btn sm primary" onclick="loadReportSub()">Show</button>
     </div></div>`;
 }
