@@ -110,6 +110,52 @@ if cur.execute("SELECT COUNT(*) FROM bills WHERE shop_id=?", (shop_id,)).fetchon
                 (shop_id, t.isoformat(), "out", 500, "kharcha", "Dukan ka kharcha (chai + safai)"))
     print("sample bills/payments ban gaye")
 
+# sample kharid (supplier se) — agar purchases nahi hain
+if cur.execute("SELECT COUNT(*) FROM purchases WHERE shop_id=?", (shop_id,)).fetchone()[0] == 0:
+    t = date.today()
+    sup = party_ids["Shahid (Ostric Supplier)"]
+    n = cur.execute("SELECT COUNT(*) FROM purchases WHERE shop_id=?", (shop_id,)).fetchone()[0]
+    pur_no = f"PUR-{n+1:05d}"
+    lines = [("Ostric LED Bulb 12W", 50, 120), ("Multi Plug", 20, 150)]
+    sub = sum(round(q * p, 2) for _, q, p in lines)
+    c = cur.execute(
+        "INSERT INTO purchases(shop_id,bill_no,party_id,party_name,date,subtotal,discount,total,paid,mode) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (shop_id, pur_no, sup, "Shahid (Ostric Supplier)", (t - timedelta(days=3)).isoformat(), sub, 0, sub, 5000, "cash"))
+    pur_id = c.lastrowid
+    for pname, qty, price in lines:
+        pr = cur.execute("SELECT * FROM products WHERE id=?", (pids[pname],)).fetchone()
+        cur.execute("INSERT INTO purchase_items(purchase_id,product_id,product_name,qty,price,total) VALUES (?,?,?,?,?,?)",
+                    (pur_id, pr["id"], pr["name"], qty, price, round(qty * price, 2)))
+        cur.execute("UPDATE products SET stock_qty = stock_qty + ?, purchase_price = ? WHERE id=?",
+                    (qty, price, pr["id"]))
+    cur.execute("INSERT INTO cash_txns(shop_id,date,kind,amount,category,note,ref) VALUES (?,?,?,?,?,?,?)",
+                (shop_id, (t - timedelta(days=3)).isoformat(), "out", 5000, "kharid",
+                 f"Kharid {pur_no} — Shahid (Ostric Supplier)", f"purchase:{pur_id}"))
+    print("sample purchase ban gaya")
+
+# sample andaza (quotation) — agar estimates nahi hain
+if cur.execute("SELECT COUNT(*) FROM estimates WHERE shop_id=?", (shop_id,)).fetchone()[0] == 0:
+    t = date.today()
+    n = cur.execute("SELECT COUNT(*) FROM estimates WHERE shop_id=?", (shop_id,)).fetchone()[0]
+    est_no = f"EST-{n+1:05d}"
+    lines = [("Ostric LED Bulb 30W", 10), ("Wire 1.5mm (coil)", 2)]
+    sub = 0
+    items = []
+    for pname, qty in lines:
+        pr = cur.execute("SELECT * FROM products WHERE id=?", (pids[pname],)).fetchone()
+        lt = round(pr["sale_price"] * qty, 2)
+        sub += lt
+        items.append((pr, qty, pr["sale_price"], lt))
+    sub = round(sub, 2)
+    c = cur.execute(
+        "INSERT INTO estimates(shop_id,est_no,party_id,party_name,date,subtotal,discount,total) VALUES (?,?,?,?,?,?,?,?)",
+        (shop_id, est_no, party_ids["Capital Contactor"], "Capital Contactor", t.isoformat(), sub, 200, sub - 200))
+    est_id = c.lastrowid
+    for pr, qty, price, lt in items:
+        cur.execute("INSERT INTO estimate_items(estimate_id,product_id,product_name,qty,price,total) VALUES (?,?,?,?,?,?)",
+                    (est_id, pr["id"], pr["name"], qty, price, lt))
+    print("sample estimate ban gaya")
+
 conn.commit()
 conn.close()
 print("seed mukammal")
