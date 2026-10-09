@@ -1218,6 +1218,82 @@ def daybook(date: str = "", shop_id: int = Depends(shop_of)):
         conn.close()
 
 
+# ---------- combined transactions (HOME screen) ----------
+@app.get("/api/transactions")
+def transactions(q: str = "", shop_id: int = Depends(shop_of)):
+    conn = get_db()
+    try:
+        like = f"%{q}%"
+        out = []
+        for b in conn.execute(
+            """SELECT id, bill_no AS ref, party_id, party_name, date, total,
+                      (total - paid) AS balance, paid, created_at
+               FROM bills WHERE shop_id=? AND (party_name LIKE ? OR bill_no LIKE ?)""",
+            (shop_id, like, like)).fetchall():
+            d = dict(b)
+            out.append({"key": f"sale-{d['id']}", "kind": "sale", "ref": d["ref"],
+                        "party_id": d["party_id"], "party_name": d["party_name"] or "Walk-in",
+                        "date": d["date"], "total": d["total"], "balance": max(0.0, d["balance"] or 0),
+                        "paid": d["paid"], "doc_id": d["id"], "created_at": d["created_at"]})
+        for p in conn.execute(
+            """SELECT id, bill_no AS ref, party_id, party_name, date, total,
+                      (total - paid) AS balance, paid, created_at
+               FROM purchases WHERE shop_id=? AND (party_name LIKE ? OR bill_no LIKE ?)""",
+            (shop_id, like, like)).fetchall():
+            d = dict(p)
+            out.append({"key": f"pur-{d['id']}", "kind": "purchase", "ref": d["ref"],
+                        "party_id": d["party_id"], "party_name": d["party_name"] or "—",
+                        "date": d["date"], "total": d["total"], "balance": max(0.0, d["balance"] or 0),
+                        "paid": d["paid"], "doc_id": d["id"], "created_at": d["created_at"]})
+        for p in conn.execute(
+            """SELECT p.id, p.party_id, pt.name AS party_name, p.date, p.amount AS total,
+                      p.direction, p.mode, p.note, p.created_at
+               FROM payments p JOIN parties pt ON pt.id = p.party_id
+               WHERE p.shop_id=? AND (pt.name LIKE ? OR p.note LIKE ?)""",
+            (shop_id, like, like)).fetchall():
+            d = dict(p)
+            kind = "payment-in" if d["direction"] == "lena" else "payment-out"
+            out.append({"key": f"pay-{d['id']}", "kind": kind, "ref": f"PAY-{d['id']}",
+                        "party_id": d["party_id"], "party_name": d["party_name"],
+                        "date": d["date"], "total": d["total"], "balance": 0,
+                        "paid": d["total"], "doc_id": d["id"], "created_at": d["created_at"],
+                        "mode": d["mode"], "note": d["note"]})
+        out.sort(key=lambda x: (x["date"] or "", x["created_at"] or ""), reverse=True)
+        return out[:300]
+    finally:
+        conn.close()
+
+
+# ---------- monthly sales/purchases/expenses (DASHBOARD chart) ----------
+@app.get("/api/reports/monthly-sales")
+def monthly_sales(months: int = 4, shop_id: int = Depends(shop_of)):
+    from datetime import date as _date
+    conn = get_db()
+    try:
+        t = _date.today()
+        out = []
+        y, m = t.year, t.month
+        for _ in range(max(1, min(months, 12))):
+            prefix = f"{y}-{m:02d}"
+            sale = conn.execute("SELECT COALESCE(SUM(total),0) FROM bills WHERE shop_id=? AND substr(date,1,7)=?",
+                                (shop_id, prefix)).fetchone()[0]
+            pur = conn.execute("SELECT COALESCE(SUM(total),0) FROM purchases WHERE shop_id=? AND substr(date,1,7)=?",
+                               (shop_id, prefix)).fetchone()[0]
+            exp = conn.execute("SELECT COALESCE(SUM(amount),0) FROM cash_txns WHERE shop_id=? AND kind='out' AND substr(date,1,7)=?",
+                               (shop_id, prefix)).fetchone()[0]
+            out.append({"month": prefix, "label": MONTHS_SHORT[m - 1], "sale": sale, "purchase": pur, "expense": exp})
+            m -= 1
+            if m == 0:
+                m, y = 12, y - 1
+        out.reverse()
+        return out
+    finally:
+        conn.close()
+
+
+MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
 # ---------- frontend (PWA) ----------
 
 @app.get("/")
