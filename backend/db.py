@@ -102,6 +102,61 @@ CREATE TABLE IF NOT EXISTS cash_txns (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_cash_shop_date ON cash_txns(shop_id, date);
+
+-- Kharid (purchase bills, supplier se samaan)
+CREATE TABLE IF NOT EXISTS purchases (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+    bill_no TEXT NOT NULL,
+    party_id INTEGER REFERENCES parties(id) ON DELETE SET NULL,
+    party_name TEXT DEFAULT '',
+    date TEXT NOT NULL,
+    subtotal REAL NOT NULL DEFAULT 0,
+    discount REAL NOT NULL DEFAULT 0,
+    total REAL NOT NULL DEFAULT 0,
+    paid REAL NOT NULL DEFAULT 0,
+    mode TEXT DEFAULT 'cash',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(shop_id, bill_no)
+);
+CREATE INDEX IF NOT EXISTS idx_purchases_shop_date ON purchases(shop_id, date);
+
+CREATE TABLE IF NOT EXISTS purchase_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    purchase_id INTEGER NOT NULL REFERENCES purchases(id) ON DELETE CASCADE,
+    product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
+    product_name TEXT NOT NULL,
+    qty REAL NOT NULL,
+    price REAL NOT NULL,
+    total REAL NOT NULL
+);
+
+-- Andaza / Quotation (customer ko rate ka andaza, pakka bill nahi)
+CREATE TABLE IF NOT EXISTS estimates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+    est_no TEXT NOT NULL,
+    party_id INTEGER REFERENCES parties(id) ON DELETE SET NULL,
+    party_name TEXT DEFAULT '',
+    date TEXT NOT NULL,
+    subtotal REAL NOT NULL DEFAULT 0,
+    discount REAL NOT NULL DEFAULT 0,
+    total REAL NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'open',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(shop_id, est_no)
+);
+CREATE INDEX IF NOT EXISTS idx_estimates_shop ON estimates(shop_id);
+
+CREATE TABLE IF NOT EXISTS estimate_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    estimate_id INTEGER NOT NULL REFERENCES estimates(id) ON DELETE CASCADE,
+    product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
+    product_name TEXT NOT NULL,
+    qty REAL NOT NULL,
+    price REAL NOT NULL,
+    total REAL NOT NULL
+);
 """
 
 
@@ -116,6 +171,15 @@ def init_db() -> None:
     conn = get_db()
     try:
         conn.executescript(SCHEMA)
+        conn.commit()
+        # products me naye columns (purani DB ke liye migration)
+        for col, ddl in (("barcode", "TEXT DEFAULT ''"),
+                         ("expiry_date", "TEXT DEFAULT ''"),
+                         ("category", "TEXT DEFAULT ''")):
+            try:
+                conn.execute(f"ALTER TABLE products ADD COLUMN {col} {ddl}")
+            except Exception:
+                pass  # column pehle se hai
         conn.commit()
     finally:
         conn.close()
