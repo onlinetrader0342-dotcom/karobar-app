@@ -1040,6 +1040,15 @@ def dashboard(shop_id: int = Depends(shop_of)):
             (shop_id,)).fetchall()
         n_products = conn.execute("SELECT COUNT(*) FROM products WHERE shop_id=?", (shop_id,)).fetchone()[0]
         n_parties = conn.execute("SELECT COUNT(*) FROM parties WHERE shop_id=?", (shop_id,)).fetchone()[0]
+        bank_rows = conn.execute("SELECT id, opening_balance FROM bank_accounts WHERE shop_id=?", (shop_id,)).fetchall()
+        bank_total = 0.0
+        for br in bank_rows:
+            inn = conn.execute("SELECT COALESCE(SUM(amount),0) FROM bank_txns WHERE account_id=? AND kind='in'", (br["id"],)).fetchone()[0]
+            out = conn.execute("SELECT COALESCE(SUM(amount),0) FROM bank_txns WHERE account_id=? AND kind='out'", (br["id"],)).fetchone()[0]
+            bank_total += br["opening_balance"] + inn - out
+        cash_in = conn.execute("SELECT COALESCE(SUM(amount),0) FROM cash_txns WHERE shop_id=? AND kind='in'", (shop_id,)).fetchone()[0]
+        cash_out = conn.execute("SELECT COALESCE(SUM(amount),0) FROM cash_txns WHERE shop_id=? AND kind='out'", (shop_id,)).fetchone()[0]
+        cash_in_hand = cash_in - cash_out
         recent = conn.execute(
             """SELECT 'bill' AS kind, bill_no AS ref, date, total AS amount, party_name AS name FROM bills WHERE shop_id=?
                UNION ALL
@@ -1050,6 +1059,7 @@ def dashboard(shop_id: int = Depends(shop_of)):
             "aaj_ki_sale": round(sale, 2), "aaj_ki_kharid": round(kharid, 2),
             "aaj_ka_kharcha": round(expense, 2),
             "kul_lena": round(lena, 2), "kul_dena": round(dena, 2),
+            "bank_total": round(bank_total, 2), "cash_in_hand": round(cash_in_hand, 2),
             "low_stock": dicts(low), "products": n_products, "parties": n_parties,
             "recent": dicts(recent),
         }
