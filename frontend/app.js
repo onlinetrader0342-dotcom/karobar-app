@@ -95,6 +95,9 @@ const DRAWER_ITEMS = [
   ["v-kharid", "🛒", "Purchases"],
   ["v-stock", "📦", "Stock"],
   ["v-khata", "📒", "Ledger"],
+  ["v-challans", "🚚", "Delivery Challans"],
+  ["v-banks", "🏦", "Bank Accounts"],
+  ["v-reminders", "🔔", "Payment Reminders"],
   ["v-cash", "💵", "Cash Book"],
   ["v-kharchay", "💸", "Expenses"],
   ["v-reports", "📊", "Reports"],
@@ -664,6 +667,9 @@ async function saveCash(kind) {
 RENDER["v-more"] = async () => {
   $("v-more").innerHTML = `
     <div class="menu-item" onclick="go('v-khata')"><span class="ic">📒</span><div class="t">Ledger (Customers / Suppliers)</div></div>
+    <div class="menu-item" onclick="go('v-challans')"><span class="ic">🚚</span><div class="t">Delivery Challans</div></div>
+    <div class="menu-item" onclick="go('v-banks')"><span class="ic">🏦</span><div class="t">Bank Accounts</div></div>
+    <div class="menu-item" onclick="go('v-reminders')"><span class="ic">🔔</span><div class="t">Payment Reminders</div></div>
     <div class="menu-item" onclick="go('v-cash')"><span class="ic">💵</span><div class="t">Cash Book</div></div>
     <div class="menu-item" onclick="go('v-kharchay')"><span class="ic">💸</span><div class="t">Expenses</div></div>
     <div class="menu-item" onclick="go('v-reports')"><span class="ic">📊</span><div class="t">Reports</div></div>
@@ -671,6 +677,258 @@ RENDER["v-more"] = async () => {
     <div class="menu-item" onclick="logout()"><span class="ic">🚪</span><div class="t">Logout</div></div>
     <div style="text-align:center;color:#9ca3af;font-size:12px;margin-top:20px">Karobar v2.0</div>`;
 };
+
+/* ================= DELIVERY CHALLANS ================= */
+RENDER["v-challans"] = async () => {
+  const v = $("v-challans");
+  v.innerHTML = `<div class="card">Loading…</div>`;
+  try {
+    const list = await api("/challans");
+    v.innerHTML = `<button class="fab" onclick="openChallanForm()">+</button>` +
+      (list.length ? list.map((c) => `
+        <div class="list-item" onclick="go('v-challan-detail', ${c.id})">
+          <div><div class="t">🚚 ${esc(c.challan_no)}${c.party_name ? " — " + esc(c.party_name) : ""}</div>
+          <div class="s">${esc(c.date)}${c.vehicle_no ? " · " + esc(c.vehicle_no) : ""}</div></div>
+          <div style="text-align:right">${c.status === "billed"
+            ? `<span class="badge ok">BILLED</span>` : `<span class="badge info">OPEN</span>`}</div>
+        </div>`).join("")
+      : `<div class="empty">No delivery challans yet.<br>Tap + to create one.</div>`) +
+      `<button class="btn ghost block" onclick="go('v-more')">← Back</button>`;
+  } catch (e) { v.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
+};
+
+let CH = {party_id: null, party_name: "", items: [], vehicle_no: ""};
+async function openChallanForm() {
+  CH = {party_id: null, party_name: "", items: [], vehicle_no: ""};
+  const [products, parties] = await Promise.all([api("/products"), api("/parties?type=customer")]);
+  window._chProducts = products; window._chParties = parties;
+  renderChallanForm();
+}
+function renderChallanForm() {
+  const lines = CH.items.map((it, i) => {
+    const p = window._chProducts.find((x) => x.id === it.product_id);
+    return `<div class="kv"><span>${esc(p ? p.name : "?")} × ${it.qty} <span style="color:#6b7280">(stock ${p ? p.stock_qty : "?"})</span></span>
+      <span><button class="btn sm danger" onclick="CH.items.splice(${i},1);renderChallanForm()">✕</button></span></div>`;
+  }).join("");
+  modal(`
+    <h3>🚚 New Delivery Challan</h3>
+    <div style="font-size:12px;color:#6b7280;margin-bottom:8px">Stock is reduced when the challan is created. No billing.</div>
+    <label class="f">Customer</label>
+    <select id="ch-party" onchange="CH.party_id=+this.value||null;CH.party_name=this.options[this.selectedIndex].text">
+      <option value="">— Walk-in —</option>
+      ${window._chParties.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("")}
+    </select>
+    <label class="f">Vehicle No (optional)</label><input id="ch-veh" value="${esc(CH.vehicle_no)}" placeholder="e.g. LXR-1234" oninput="CH.vehicle_no=this.value">
+    <div class="divider"></div>
+    <label class="f">Add items</label>
+    <div class="row">
+      <select id="ch-product" class="grow">
+        ${window._chProducts.map((p) => `<option value="${p.id}">${esc(p.name)} (stock ${p.stock_qty})</option>`).join("")}
+      </select>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <input id="ch-qty" class="grow" type="number" min="1" value="1" placeholder="Qty">
+      <button class="btn sm primary" onclick="chAddItem()">+ Add</button>
+    </div>
+    <div class="divider"></div>
+    ${lines || `<div style="color:#6b7280;font-size:13px">No items yet</div>`}
+    <div class="err" id="ch-err"></div>
+    <button class="btn primary block" onclick="chSave()">Create Challan</button>
+    <button class="btn ghost block" onclick="closeModal()">Cancel</button>`);
+}
+function chAddItem() {
+  const pid = +$("ch-product").value, qty = +$("ch-qty").value || 0;
+  if (qty <= 0) return;
+  const ex = CH.items.find((i) => i.product_id === pid);
+  if (ex) ex.qty += qty; else CH.items.push({product_id: pid, qty});
+  renderChallanForm();
+}
+async function chSave() {
+  if (!CH.items.length) { $("ch-err").textContent = "Add at least one item"; return; }
+  try {
+    const c = await api("/challans", "POST", {
+      party_id: CH.party_id, party_name: CH.party_name === "— Walk-in —" ? "" : CH.party_name,
+      vehicle_no: CH.vehicle_no, items: CH.items});
+    closeModal(); go("v-challan-detail", c.id);
+  } catch (e) { $("ch-err").textContent = e.message; }
+}
+
+RENDER["v-challan-detail"] = async (ch_id) => {
+  const v = $("v-challan-detail");
+  v.innerHTML = `<div class="card">Loading…</div>`;
+  try {
+    const c = await api("/challans/" + ch_id);
+    const s = SHOP || {};
+    const rows = c.items.map((it) =>
+      `<tr><td>${esc(it.product_name)}</td><td class="num">${it.qty}</td></tr>`).join("");
+    v.innerHTML = `
+    <div class="bill-paper">
+      <div class="center">
+        <div class="shopname">${esc(s.name || "Karobar")}</div>
+        <div class="meta">DELIVERY CHALLAN</div>
+      </div>
+      <div class="divider"></div>
+      <div class="kv"><span>Challan No</span><b>${esc(c.challan_no)}</b></div>
+      <div class="kv"><span>Date</span><b>${esc(c.date)}</b></div>
+      ${c.party_name ? `<div class="kv"><span>Customer</span><b>${esc(c.party_name)}</b></div>` : ""}
+      ${c.vehicle_no ? `<div class="kv"><span>Vehicle</span><b>${esc(c.vehicle_no)}</b></div>` : ""}
+      <div class="divider"></div>
+      <table class="tbl"><tr><th>Item</th><th class="num">Qty</th></tr>${rows}</table>
+      <div class="divider"></div>
+      <div class="kv"><span>Status</span><b>${c.status === "billed" ? "BILLED" : "OPEN"}</b></div>
+      <div style="margin-top:16px;display:flex;gap:40px">
+        <div style="flex:1;border-top:1px solid #999;padding-top:4px;font-size:12px;color:#6b7280">Delivered by</div>
+        <div style="flex:1;border-top:1px solid #999;padding-top:4px;font-size:12px;color:#6b7280">Received by</div>
+      </div>
+    </div>
+    <div class="no-print">
+      <button class="btn primary block" onclick="window.print()">🖨️ Print</button>
+      <button class="btn amber block" onclick="shareChallan(${c.id})">📲 Share on WhatsApp</button>
+      ${c.status === "open" ? `<button class="btn outline block" onclick="convertChallan(${c.id})">🧾 Convert to Bill</button>` : ""}
+      <button class="btn ghost block" onclick="go('v-challans')">← Challans</button>
+    </div>`;
+    window._lastChallan = c;
+  } catch (e) { v.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
+};
+function shareChallan() {
+  const c = window._lastChallan; if (!c) return;
+  const s = SHOP || {};
+  let txt = `${s.name || "Karobar"}\nDELIVERY CHALLAN: ${c.challan_no} | ${c.date}\n----------------\n`;
+  c.items.forEach((it) => { txt += `${it.product_name} x${it.qty}\n`; });
+  if (c.vehicle_no) txt += `Vehicle: ${c.vehicle_no}\n`;
+  window.open("https://wa.me/?text=" + encodeURIComponent(txt), "_blank");
+}
+async function convertChallan(ch_id) {
+  if (!confirm("Convert this challan to a bill?")) return;
+  try {
+    const b = await api(`/challans/${ch_id}/convert`, "POST");
+    go("v-bill-detail", b.id);
+  } catch (e) { alert(e.message); }
+}
+
+/* ================= BANK ACCOUNTS ================= */
+RENDER["v-banks"] = async () => {
+  const v = $("v-banks");
+  v.innerHTML = `<div class="card">Loading…</div>`;
+  try {
+    const accs = await api("/bank-accounts");
+    const total = accs.reduce((s, a) => s + a.balance, 0);
+    v.innerHTML = `<button class="fab" onclick="openBankForm()">+</button>
+      <div class="card"><div class="kv"><span><b>Total in Banks</b></span><b style="color:var(--primary-dark)">${rs(total)}</b></div></div>` +
+      (accs.length ? accs.map((a) => `
+        <div class="list-item" onclick="go('v-bank-detail', ${a.id})">
+          <div><div class="t">🏦 ${esc(a.name)}</div>
+          <div class="s">${esc(a.bank_name)}${a.account_no ? " · " + esc(a.account_no) : ""}</div></div>
+          <div class="t" style="color:${a.balance < 0 ? "var(--danger)" : "var(--primary-dark)"}">${rs(a.balance)}</div>
+        </div>`).join("")
+      : `<div class="empty">No bank accounts yet.<br>Tap + to add your first account.</div>`) +
+      `<button class="btn ghost block" onclick="go('v-more')">← Back</button>`;
+  } catch (e) { v.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
+};
+function openBankForm() {
+  modal(`
+    <h3>🏦 New Bank Account</h3>
+    <label class="f">Account Nickname</label><input id="bk-name" placeholder="e.g. Meezan Current">
+    <label class="f">Bank Name</label><input id="bk-bank" placeholder="e.g. Meezan Bank">
+    <label class="f">Account No (optional)</label><input id="bk-no" placeholder="e.g. 0123-0101234567">
+    <label class="f">Opening Balance (Rs)</label><input id="bk-bal" type="number" value="0">
+    <div class="err" id="bk-err"></div>
+    <button class="btn primary block" onclick="saveBank()">Save</button>
+    <button class="btn ghost block" onclick="closeModal()">Cancel</button>`);
+}
+async function saveBank() {
+  const name = $("bk-name").value.trim();
+  if (!name) { $("bk-err").textContent = "Account name is required"; return; }
+  try {
+    await api("/bank-accounts", "POST", {name, bank_name: $("bk-bank").value.trim(),
+      account_no: $("bk-no").value.trim(), opening_balance: +$("bk-bal").value || 0});
+    closeModal(); RENDER["v-banks"]();
+  } catch (e) { $("bk-err").textContent = e.message; }
+}
+RENDER["v-bank-detail"] = async (acc_id) => {
+  const v = $("v-bank-detail");
+  v.innerHTML = `<div class="card">Loading…</div>`;
+  try {
+    const a = await api("/bank-accounts/" + acc_id);
+    window._bank = a;
+    const txns = a.txns.length ? a.txns.map((t) => `
+      <div class="list-item" style="cursor:default">
+        <div><div class="t">${esc(t.note || (t.kind === "in" ? "Deposit" : "Withdrawal"))}</div><div class="s">${esc(t.date)}</div></div>
+        <div class="t" style="color:${t.kind === "in" ? "var(--success)" : "var(--danger)"}">${t.kind === "in" ? "+" : "−"} ${rs(t.amount)}</div>
+      </div>`).join("") : `<div class="empty">No transactions yet</div>`;
+    v.innerHTML = `
+      <div class="card"><h3>🏦 ${esc(a.name)}</h3>
+        <div class="s" style="color:#6b7280">${esc(a.bank_name)}${a.account_no ? " · " + esc(a.account_no) : ""}</div>
+        <div class="stat" style="margin-top:10px"><div class="lbl">Current Balance</div>
+        <div class="val" style="color:${a.balance < 0 ? "var(--danger)" : "var(--primary-dark)"}">${rs(a.balance)}</div></div></div>
+      <div class="row">
+        <button class="btn primary grow" onclick="openBankTxn('in')">+ Deposit</button>
+        <button class="btn danger grow" onclick="openBankTxn('out')">− Withdraw</button>
+      </div>
+      <div style="height:10px"></div>${txns}
+      <button class="btn ghost block" onclick="go('v-banks')">← Bank Accounts</button>`;
+  } catch (e) { v.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
+};
+function openBankTxn(kind) {
+  modal(`
+    <h3>${kind === "in" ? "💰 Deposit to " : "💸 Withdraw from "}${esc(window._bank.name)}</h3>
+    <label class="f">Amount (Rs)</label><input id="bt-amt" type="number" min="1">
+    <label class="f">Note</label><input id="bt-note" placeholder="Details">
+    <div class="err" id="bt-err"></div>
+    <button class="btn primary block" onclick="saveBankTxn('${kind}')">Save</button>
+    <button class="btn ghost block" onclick="closeModal()">Cancel</button>`);
+}
+async function saveBankTxn(kind) {
+  const amt = +$("bt-amt").value || 0;
+  if (amt <= 0) { $("bt-err").textContent = "Enter an amount"; return; }
+  try {
+    await api(`/bank-accounts/${window._bank.id}/txns`, "POST",
+      {kind, amount: amt, note: $("bt-note").value.trim()});
+    closeModal(); RENDER["v-bank-detail"](window._bank.id);
+  } catch (e) { $("bt-err").textContent = e.message; }
+}
+
+/* ================= PAYMENT REMINDERS ================= */
+RENDER["v-reminders"] = async () => {
+  const v = $("v-reminders");
+  v.innerHTML = `<div class="card">Loading…</div>`;
+  try {
+    const parties = await api("/parties?type=customer");
+    const due = parties.filter((p) => p.balance > 0).sort((a, b) => b.balance - a.balance);
+    const total = due.reduce((s, p) => s + p.balance, 0);
+    window._remDue = due;
+    v.innerHTML = `
+      <div class="card"><div class="kv"><span><b>Total Receivable</b></span><b style="color:var(--danger)">${rs(total)}</b></div>
+      <div class="s" style="color:#6b7280;font-size:12px">${due.length} customer(s) have unpaid balances</div></div>
+      ${due.length ? `<button class="btn primary block" onclick="remindAll()" style="margin-bottom:12px">📲 Remind All on WhatsApp</button>` : ""}
+      ` + (due.length ? due.map((p, i) => `
+        <div class="list-item" style="cursor:default">
+          <div><div class="t">${esc(p.name)}</div><div class="s">${esc(p.phone || "no number")}</div></div>
+          <div style="text-align:right"><div class="t" style="color:var(--danger)">${rs(p.balance)}</div>
+          <button class="btn sm primary" style="margin-top:4px" onclick="remindOne(${i})">📲 Remind</button></div>
+        </div>`).join("")
+      : `<div class="empty">🎉 Nobody owes you anything!</div>`) +
+      `<button class="btn ghost block" onclick="go('v-more')">← Back</button>`;
+  } catch (e) { v.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
+};
+function remindText(p) {
+  const s = SHOP || {};
+  return `Assalam-o-Alaikum ${p.name}, this is ${s.name || "Karobar"}. Your outstanding balance is Rs ${Math.round(p.balance)}. Please pay at your earliest convenience. Thank you!`;
+}
+function remindOne(i) {
+  const p = window._remDue[i];
+  const url = "https://wa.me/" + (p.phone || "").replace(/\D/g, "") + "?text=" + encodeURIComponent(remindText(p));
+  window.open(p.phone ? url : "https://wa.me/?text=" + encodeURIComponent(remindText(p)), "_blank");
+}
+function remindAll() {
+  const due = window._remDue || [];
+  if (!due.length) return;
+  if (!confirm(`Open WhatsApp for ${due.length} customers one by one?`)) return;
+  due.forEach((p, i) => setTimeout(() => {
+    const url = "https://wa.me/" + (p.phone || "").replace(/\D/g, "") + "?text=" + encodeURIComponent(remindText(p));
+    window.open(p.phone ? url : "https://wa.me/?text=" + encodeURIComponent(remindText(p)), "_blank");
+  }, i * 1200));
+}
 
 /* ================= LEDGER ================= */
 let KHATA_TYPE = "customer";
