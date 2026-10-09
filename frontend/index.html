@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="ur">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0f766e">
-<title>Karobar — Dukan ka Hisab Kitab</title>
+<title>Karobar — Shop Accounting</title>
 <link rel="manifest" href="/static/manifest.json">
 <link rel="stylesheet" href="/static/style.css">
 <link rel="icon" href="/static/icon.svg">
@@ -15,10 +15,10 @@
     <div class="auth-card">
       <img class="logo" src="/static/icon.svg" alt="Karobar">
       <h2 style="margin:8px 0 2px">Karobar</h2>
-      <div style="color:#6b7280;font-size:13px">Dukan ka hisab kitab — billing, stock, khata</div>
+      <div style="color:#6b7280;font-size:13px">Shop accounting — billing, stock, ledger</div>
       <div class="tabs">
         <button id="tab-login" class="active" onclick="showAuthTab('login')">Login</button>
-        <button id="tab-signup" onclick="showAuthTab('signup')">Naya Account</button>
+        <button id="tab-signup" onclick="showAuthTab('signup')">New Account</button>
       </div>
       <div id="auth-login">
         <label class="f" style="text-align:left">Mobile Number</label>
@@ -27,17 +27,17 @@
         <input id="login-pass" type="password" placeholder="Password">
       </div>
       <div id="auth-signup" style="display:none">
-        <label class="f" style="text-align:left">Dukan ka Naam</label>
-        <input id="su-shop" placeholder="Masalan: Imran Electric Store">
-        <label class="f" style="text-align:left">Apka Naam</label>
-        <input id="su-owner" placeholder="Apka naam">
+        <label class="f" style="text-align:left">Shop Name</label>
+        <input id="su-shop" placeholder="E.g. Imran Electric Store">
+        <label class="f" style="text-align:left">Your Name</label>
+        <input id="su-owner" placeholder="Your name">
         <label class="f" style="text-align:left">Mobile Number</label>
         <input id="su-phone" inputmode="tel" placeholder="03xxxxxxxxx">
         <label class="f" style="text-align:left">Password</label>
-        <input id="su-pass" type="password" placeholder="Kam az kam 4 harf">
+        <input id="su-pass" type="password" placeholder="At least 4 characters">
       </div>
       <div class="err" id="auth-err"></div>
-      <button class="btn primary block" onclick="doAuth()">Dakhil Hon</button>
+      <button class="btn primary block" onclick="doAuth()">Login</button>
       <div style="font-size:12px;color:#6b7280;margin-top:12px">Demo: 03219807144 / demo1234</div>
     </div>
   </div>
@@ -45,9 +45,18 @@
 
 <div id="app-screen" style="display:none">
   <header class="topbar">
-    <img class="logo" src="/static/icon.svg" alt="">
-    <div><h1>Karobar</h1><div class="shop" id="shop-name">—</div></div>
+    <button class="hamb" onclick="openDrawer()" aria-label="Menu">☰</button>
+    <h1>Karobar</h1>
+    <span class="top-sp"></span>
   </header>
+  <div id="drawer-bg" class="drawer-bg" onclick="closeDrawer()"></div>
+  <aside id="drawer" class="drawer">
+    <div class="drawer-head">
+      <img class="logo" src="/static/icon.svg" alt="">
+      <div><div class="t">Karobar</div><div class="s" id="drawer-shop">—</div></div>
+    </div>
+    <div id="drawer-menu"></div>
+  </aside>
 
   <section class="view" id="v-home"></section>
   <section class="view" id="v-sale"></section>
@@ -67,9 +76,9 @@
   <nav class="bottom" id="bottom-nav">
     <button data-v="v-home" class="active" onclick="go('v-home')"><span class="ic">🏠</span>Home</button>
     <button data-v="v-sale" onclick="go('v-sale')"><span class="ic">🧾</span>Sale</button>
-    <button data-v="v-kharid" onclick="go('v-kharid')"><span class="ic">🛒</span>Kharid</button>
+    <button data-v="v-kharid" onclick="go('v-kharid')"><span class="ic">🛒</span>Purchases</button>
     <button data-v="v-stock" onclick="go('v-stock')"><span class="ic">📦</span>Stock</button>
-    <button data-v="v-more" onclick="go('v-more')"><span class="ic">⋯</span>Aur</button>
+    <button data-v="v-more" onclick="go('v-more')"><span class="ic">⋯</span>More</button>
   </nav>
 </div>
 
