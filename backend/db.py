@@ -157,6 +157,54 @@ CREATE TABLE IF NOT EXISTS estimate_items (
     price REAL NOT NULL,
     total REAL NOT NULL
 );
+
+-- Delivery Challan (samaan bhejne ki raseed — pakka bill nahi, stock kam hota hai)
+CREATE TABLE IF NOT EXISTS challans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+    challan_no TEXT NOT NULL,
+    party_id INTEGER REFERENCES parties(id) ON DELETE SET NULL,
+    party_name TEXT DEFAULT '',
+    date TEXT NOT NULL,
+    vehicle_no TEXT DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'open',   -- open | billed
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(shop_id, challan_no)
+);
+CREATE INDEX IF NOT EXISTS idx_challans_shop ON challans(shop_id);
+
+CREATE TABLE IF NOT EXISTS challan_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    challan_id INTEGER NOT NULL REFERENCES challans(id) ON DELETE CASCADE,
+    product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
+    product_name TEXT NOT NULL,
+    qty REAL NOT NULL
+);
+
+-- Bank Accounts (dukaan ke bank khaate)
+CREATE TABLE IF NOT EXISTS bank_accounts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,                 -- e.g. "Meezan Current"
+    bank_name TEXT DEFAULT '',
+    account_no TEXT DEFAULT '',
+    opening_balance REAL NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_bankacc_shop ON bank_accounts(shop_id);
+
+CREATE TABLE IF NOT EXISTS bank_txns (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+    account_id INTEGER NOT NULL REFERENCES bank_accounts(id) ON DELETE CASCADE,
+    date TEXT NOT NULL,
+    kind TEXT NOT NULL,                 -- 'in' | 'out'
+    amount REAL NOT NULL,
+    note TEXT DEFAULT '',
+    ref TEXT DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_banktxn_acc ON bank_txns(account_id);
 """
 
 
