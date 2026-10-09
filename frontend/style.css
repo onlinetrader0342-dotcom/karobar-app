@@ -224,7 +224,17 @@ table.tbl th { color: var(--muted); font-weight: 600; font-size: 12px; }
 .line .s { font-size: 11px; color: var(--muted); }
 .icon-btn { border: 0; background: #f2f2f2; border-radius: var(--radius); padding: 6px 10px; font-size: 14px; cursor: pointer; }
 .icon-btn:active { background: #fee2e2; }
-/* ---- Add Sales summary card (Vyapar mobile pattern, desktop colors) ---- */
+/* ---- Most Used Reports tiles (Vyapar mobile pattern) ---- */
+.reptiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px; }
+.reptile {
+  border: 0; background: var(--info-bg); border-radius: 12px; padding: 12px 4px 10px;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  color: var(--primary-dark); font-size: 12px; font-weight: 600; cursor: pointer;
+  font-family: Roboto, sans-serif;
+}
+.reptile:active { background: #d3edf3; }
+.reptile svg { color: var(--primary); }
+/* ---- Add Sales summary card (Vyapar mobile pattern) ---- */
 .sumcard {
   background: var(--card); border-radius: var(--radius); margin: 12px 0;
   box-shadow: 0 1px 3px rgba(0,0,0,.12); overflow: hidden;
