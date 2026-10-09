@@ -588,12 +588,19 @@ if os.path.isdir(FRONTEND_DIR):
 @app.on_event("startup")
 def startup():
     init_db()
-    # Render jaisi fresh deploy par demo seed (sirf tab jab koi shop na ho)
+    # Render jaisi fresh deploy par demo seed (sirf tab jab koi shop na ho).
+    # Subprocess me chalao taake seed ka connection app process me leak na ho
+    # (leaked write-lock baad me har DB write ko hang kar deta hai).
     try:
         conn = get_db()
         n = conn.execute("SELECT COUNT(*) FROM shops").fetchone()[0]
         conn.close()
         if n == 0:
-            import seed  # noqa: F401  (module-level code demo data dalta hai)
+            import subprocess, sys, os as _os
+            here = _os.path.dirname(__file__)
+            subprocess.run([sys.executable, _os.path.join(here, "seed.py")],
+                           check=True, timeout=180, cwd=here,
+                           capture_output=True, text=True)
+            print("auto-seed ho gaya")
     except Exception as e:
         print("auto-seed skip:", e)
