@@ -15,6 +15,10 @@ FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")
 
 app = FastAPI(title="Karobar API")
 
+# display labels for cash categories (DB stores short codes)
+CAT_LABELS = {"expense": "Expense", "income": "Income", "sale": "Sale",
+              "party": "Party", "purchase": "Purchase", "adjustment": "Adjustment"}
+
 
 # ---------- helpers ----------
 
@@ -24,20 +28,20 @@ def today() -> str:
 
 def shop_of(authorization: Optional[str] = Header(default=None)) -> int:
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(401, "Login zaroori hai")
+        raise HTTPException(401, "Login required")
     token = authorization[7:]
     conn = get_db()
     try:
         row = conn.execute("SELECT shop_id FROM sessions WHERE token=?", (token,)).fetchone()
         if not row:
-            raise HTTPException(401, "Session khatam ho gaya, dobara login karein")
+            raise HTTPException(401, "Session expired, please log in again")
         return row["shop_id"]
     finally:
         conn.close()
 
 
 def party_balance(conn, shop_id: int, party_id: int, ptype: str) -> float:
-    """Deterministic balance. customer: + matlab gahak se LENA hai. supplier: + matlab supplier ko DENA hai."""
+    """Deterministic balance. customer: + means RECEIVABLE from customer. supplier: + means PAYABLE to supplier."""
     if ptype == "customer":
         billed = conn.execute(
             "SELECT COALESCE(SUM(total - paid), 0) FROM bills WHERE shop_id=? AND party_id=?",
@@ -82,7 +86,7 @@ class ProductIn(BaseModel):
     sale_price: float = 0
     stock_qty: float = 0
     low_stock_level: float = 5
-    unit: str = "naq"
+    unit: str = "pcs"
     barcode: str = ""
     expiry_date: str = ""
     category: str = ""
@@ -177,7 +181,7 @@ def signup(b: Signup):
     try:
         exists = conn.execute("SELECT id FROM shops WHERE phone=?", (b.phone,)).fetchone()
         if exists:
-            raise HTTPException(400, "Is number se pehle se account hai")
+            raise HTTPException(400, "An account already exists with this number")
         cur = conn.execute(
             "INSERT INTO shops(name, owner_name, phone, password_hash) VALUES (?,?,?,?)",
             (b.name, b.owner_name, b.phone, hash_password(b.password)))
@@ -196,7 +200,7 @@ def login(b: Login):
     try:
         row = conn.execute("SELECT id, password_hash FROM shops WHERE phone=?", (b.phone,)).fetchone()
         if not row or not verify_password(b.password, row["password_hash"]):
-            raise HTTPException(401, "Number ya password ghalat hai")
+            raise HTTPException(401, "Number or password is incorrect")
         token = new_token()
         conn.execute("INSERT INTO sessions(token, shop_id) VALUES (?,?)", (token, row["id"]))
         conn.commit()
@@ -288,7 +292,7 @@ def update_product(pid: int, b: ProductIn, shop_id: int = Depends(shop_of)):
         conn.commit()
         row = conn.execute("SELECT * FROM products WHERE id=? AND shop_id=?", (pid, shop_id)).fetchone()
         if not row:
-            raise HTTPException(404, "Product nahi mila")
+            raise HTTPException(404, "Product not found")
         return dict(row)
     finally:
         conn.close()
@@ -301,7 +305,7 @@ def delete_product(pid: int, shop_id: int = Depends(shop_of)):
         used = conn.execute("SELECT COUNT(*) FROM bill_items bi JOIN bills b ON b.id=bi.bill_id "
                             "WHERE b.shop_id=? AND bi.product_id=?", (shop_id, pid)).fetchone()[0]
         if used:
-            raise HTTPException(400, "Is product ke bill ban chuke hain, delete nahi ho sakta")
+            raise HTTPException(400, "Bills already exist for this product, cannot delete")
         conn.execute("DELETE FROM products WHERE id=? AND shop_id=?", (pid, shop_id))
         conn.commit()
         return {"ok": True}
@@ -311,15 +315,15 @@ def delete_product(pid: int, shop_id: int = Depends(shop_of)):
 
 @app.post("/api/products/{pid}/adjust")
 def adjust_stock(pid: int, b: StockAdjustIn, shop_id: int = Depends(shop_of)):
-    """Stock adjustment: chori/toot-phoot/ginti ka farq. qty_change + ya -."""
+    """Stock adjustment: theft/damage/count difference. qty_change + or -."""
     conn = get_db()
     try:
         pr = conn.execute("SELECT * FROM products WHERE id=? AND shop_id=?", (pid, shop_id)).fetchone()
         if not pr:
-            raise HTTPException(404, "Product nahi mila")
+            raise HTTPException(404, "Product not found")
         new_qty = round(pr["stock_qty"] + b.qty_change, 2)
         if new_qty < 0:
-            raise HTTPException(400, "Stock 0 se kam nahi ho sakta")
+            raise HTTPException(400, "Stock cannot go below 0")
         conn.execute("UPDATE products SET stock_qty=? WHERE id=?", (new_qty, pid))
         conn.execute(
             "INSERT INTO cash_txns(shop_id,date,kind,amount,category,note,ref) VALUES (?,?,'out',0,'adjustment',?,?)",
@@ -331,7 +335,7 @@ def adjust_stock(pid: int, b: StockAdjustIn, shop_id: int = Depends(shop_of)):
         conn.close()
 
 
-# ---------- purchases (kharid) ----------
+# ---------- purchases ----------
 
 def next_purchase_no(conn, shop_id: int) -> str:
     n = conn.execute("SELECT COUNT(*) FROM purchases WHERE shop_id=?", (shop_id,)).fetchone()[0]
@@ -341,7 +345,7 @@ def next_purchase_no(conn, shop_id: int) -> str:
 def get_purchase(conn, shop_id: int, pur_id: int):
     pur = conn.execute("SELECT * FROM purchases WHERE id=? AND shop_id=?", (pur_id, shop_id)).fetchone()
     if not pur:
-        raise HTTPException(404, "Kharid bill nahi mila")
+        raise HTTPException(404, "Purchase bill not found")
     d = dict(pur)
     d["items"] = dicts(conn.execute("SELECT * FROM purchase_items WHERE purchase_id=?", (pur_id,)).fetchall())
     d["baqaya"] = round(d["total"] - d["paid"], 2)
@@ -357,7 +361,7 @@ def create_purchase(b: PurchaseIn, shop_id: int = Depends(shop_of)):
             p = conn.execute("SELECT id, name FROM parties WHERE id=? AND shop_id=?",
                              (b.party_id, shop_id)).fetchone()
             if not p:
-                raise HTTPException(404, "Party nahi mili")
+                raise HTTPException(404, "Party not found")
             pname = p["name"]
         d = b.date or today()
         subtotal = 0.0
@@ -366,7 +370,7 @@ def create_purchase(b: PurchaseIn, shop_id: int = Depends(shop_of)):
             pr = conn.execute("SELECT * FROM products WHERE id=? AND shop_id=?",
                               (it.product_id, shop_id)).fetchone()
             if not pr:
-                raise HTTPException(404, f"Product #{it.product_id} nahi mila")
+                raise HTTPException(404, f"Product #{it.product_id} not found")
             price = it.price if it.price is not None else pr["purchase_price"]
             lt = round(price * it.qty, 2)
             subtotal += lt
@@ -385,13 +389,13 @@ def create_purchase(b: PurchaseIn, shop_id: int = Depends(shop_of)):
             conn.execute(
                 "INSERT INTO purchase_items(purchase_id,product_id,product_name,qty,price,total) VALUES (?,?,?,?,?,?)",
                 (pur_id, pr["id"], pr["name"], qty, price, lt))
-            # kharid se stock BARHTA hai; kharid rate bhi update (aakhri kharid rate)
+            # purchase increases stock; also updates to latest purchase rate
             conn.execute("UPDATE products SET stock_qty = stock_qty + ?, purchase_price = ? WHERE id=?",
                          (qty, price, pr["id"]))
         if paid > 0:
             conn.execute(
                 "INSERT INTO cash_txns(shop_id,date,kind,amount,category,note,ref) VALUES (?,?,?,?,?,?,?)",
-                (shop_id, d, "out", paid, "kharid", f"Kharid {bill_no}" + (f" — {pname}" if pname else ""),
+                (shop_id, d, "out", paid, "purchase", f"Purchase {bill_no}" + (f" — {pname}" if pname else ""),
                  f"purchase:{pur_id}"))
         conn.commit()
         return get_purchase(conn, shop_id, pur_id)
@@ -434,7 +438,7 @@ def next_est_no(conn, shop_id: int) -> str:
 def get_estimate(conn, shop_id: int, est_id: int):
     e = conn.execute("SELECT * FROM estimates WHERE id=? AND shop_id=?", (est_id, shop_id)).fetchone()
     if not e:
-        raise HTTPException(404, "Andaza nahi mila")
+        raise HTTPException(404, "Estimate not found")
     d = dict(e)
     d["items"] = dicts(conn.execute("SELECT * FROM estimate_items WHERE estimate_id=?", (est_id,)).fetchall())
     return d
@@ -449,7 +453,7 @@ def create_estimate(b: EstimateIn, shop_id: int = Depends(shop_of)):
             p = conn.execute("SELECT id, name FROM parties WHERE id=? AND shop_id=?",
                              (b.party_id, shop_id)).fetchone()
             if not p:
-                raise HTTPException(404, "Party nahi mili")
+                raise HTTPException(404, "Party not found")
             pname = p["name"]
         d = b.date or today()
         subtotal = 0.0
@@ -458,7 +462,7 @@ def create_estimate(b: EstimateIn, shop_id: int = Depends(shop_of)):
             pr = conn.execute("SELECT * FROM products WHERE id=? AND shop_id=?",
                               (it.product_id, shop_id)).fetchone()
             if not pr:
-                raise HTTPException(404, f"Product #{it.product_id} nahi mila")
+                raise HTTPException(404, f"Product #{it.product_id} not found")
             price = it.price if it.price is not None else pr["sale_price"]
             lt = round(price * it.qty, 2)
             subtotal += lt
@@ -504,21 +508,21 @@ def estimate_detail(est_id: int, shop_id: int = Depends(shop_of)):
 
 @app.post("/api/estimates/{est_id}/convert")
 def convert_estimate(est_id: int, shop_id: int = Depends(shop_of)):
-    """Andaza ko pakka bill me badlo (stock kam hota hai, bill banta hai)."""
+    """Convert an estimate to a final bill (stock decreases, bill is created)."""
     conn = get_db()
     try:
         e = conn.execute("SELECT * FROM estimates WHERE id=? AND shop_id=?", (est_id, shop_id)).fetchone()
         if not e:
-            raise HTTPException(404, "Andaza nahi mila")
+            raise HTTPException(404, "Estimate not found")
         if e["status"] != "open":
-            raise HTTPException(400, "Ye andaza pehle se bill me badal chuka hai")
+            raise HTTPException(400, "This estimate has already been converted to a bill")
         items = conn.execute("SELECT * FROM estimate_items WHERE estimate_id=?", (est_id,)).fetchall()
         # stock check
         for it in items:
             pr = conn.execute("SELECT * FROM products WHERE id=? AND shop_id=?",
                               (it["product_id"], shop_id)).fetchone()
             if pr and pr["stock_qty"] < it["qty"]:
-                raise HTTPException(400, f"'{pr['name']}' ka stock kam hai (mojood: {pr['stock_qty']})")
+                raise HTTPException(400, f"'{pr['name']}' — not enough stock (available: {pr['stock_qty']})")
         bill_no = next_bill_no(conn, shop_id)
         cur = conn.execute(
             """INSERT INTO bills(shop_id,bill_no,party_id,party_name,date,subtotal,discount,total,paid,mode)
@@ -567,7 +571,7 @@ def list_parties(type: str = "", shop_id: int = Depends(shop_of)):
 @app.post("/api/parties")
 def add_party(b: PartyIn, shop_id: int = Depends(shop_of)):
     if b.type not in ("customer", "supplier"):
-        raise HTTPException(400, "type customer ya supplier ho")
+        raise HTTPException(400, "type must be customer or supplier")
     conn = get_db()
     try:
         cur = conn.execute(
@@ -588,7 +592,7 @@ def party_detail(pid: int, shop_id: int = Depends(shop_of)):
     try:
         p = conn.execute("SELECT * FROM parties WHERE id=? AND shop_id=?", (pid, shop_id)).fetchone()
         if not p:
-            raise HTTPException(404, "Party nahi mili")
+            raise HTTPException(404, "Party not found")
         d = dict(p)
         d["balance"] = party_balance(conn, shop_id, pid, p["type"])
         bills = conn.execute(
@@ -609,25 +613,25 @@ def party_detail(pid: int, shop_id: int = Depends(shop_of)):
 @app.post("/api/parties/{pid}/payments")
 def add_payment(pid: int, b: PaymentIn, shop_id: int = Depends(shop_of)):
     if b.direction not in ("lena", "dena"):
-        raise HTTPException(400, "direction lena ya dena ho")
+        raise HTTPException(400, "direction must be 'lena' or 'dena'")
     conn = get_db()
     try:
         p = conn.execute("SELECT * FROM parties WHERE id=? AND shop_id=?", (pid, shop_id)).fetchone()
         if not p:
-            raise HTTPException(404, "Party nahi mili")
+            raise HTTPException(404, "Party not found")
         if p["type"] == "customer" and b.direction != "lena":
-            raise HTTPException(400, "Customer se sirf 'lena' ho sakta hai")
+            raise HTTPException(400, "For customers, direction can only be 'lena'")
         if p["type"] == "supplier" and b.direction != "dena":
-            raise HTTPException(400, "Supplier ko sirf 'dena' ho sakta hai")
+            raise HTTPException(400, "For suppliers, direction can only be 'dena'")
         d = b.date or today()
         conn.execute(
             "INSERT INTO payments(shop_id,party_id,date,amount,direction,mode,note) VALUES (?,?,?,?,?,?,?)",
             (shop_id, pid, d, b.amount, b.direction, b.mode, b.note))
-        # cash book me bhi darj
+        # also record in cash book
         kind = "in" if b.direction == "lena" else "out"
         conn.execute(
             "INSERT INTO cash_txns(shop_id,date,kind,amount,category,note,ref) VALUES (?,?,?,?,?,?,?)",
-            (shop_id, d, kind, b.amount, "party", f"{p['name']} — {'wasooli' if kind=='in' else 'adaigi'}",
+            (shop_id, d, kind, b.amount, "party", f"{p['name']} — {'received' if kind=='in' else 'paid'}",
              f"party:{pid}"))
         conn.commit()
         return {"ok": True, "balance": party_balance(conn, shop_id, pid, p["type"])}
@@ -646,7 +650,7 @@ def create_bill(b: BillIn, shop_id: int = Depends(shop_of)):
             p = conn.execute("SELECT id, name FROM parties WHERE id=? AND shop_id=?",
                              (b.party_id, shop_id)).fetchone()
             if not p:
-                raise HTTPException(404, "Party nahi mili")
+                raise HTTPException(404, "Party not found")
             pname = p["name"]
         d = b.date or today()
         subtotal, cost_total = 0.0, 0.0
@@ -655,9 +659,9 @@ def create_bill(b: BillIn, shop_id: int = Depends(shop_of)):
             pr = conn.execute("SELECT * FROM products WHERE id=? AND shop_id=?",
                               (it.product_id, shop_id)).fetchone()
             if not pr:
-                raise HTTPException(404, f"Product #{it.product_id} nahi mila")
+                raise HTTPException(404, f"Product #{it.product_id} not found")
             if pr["stock_qty"] < it.qty:
-                raise HTTPException(400, f"'{pr['name']}' ka stock kam hai (mojood: {pr['stock_qty']})")
+                raise HTTPException(400, f"'{pr['name']}' — not enough stock (available: {pr['stock_qty']})")
             price = it.price if it.price is not None else pr["sale_price"]
             lt = round(price * it.qty, 2)
             subtotal += lt
@@ -692,7 +696,7 @@ def create_bill(b: BillIn, shop_id: int = Depends(shop_of)):
 def get_bill(conn, shop_id: int, bill_id: int):
     bill = conn.execute("SELECT * FROM bills WHERE id=? AND shop_id=?", (bill_id, shop_id)).fetchone()
     if not bill:
-        raise HTTPException(404, "Bill nahi mila")
+        raise HTTPException(404, "Bill not found")
     d = dict(bill)
     d["items"] = dicts(conn.execute("SELECT * FROM bill_items WHERE bill_id=?", (bill_id,)).fetchall())
     d["baqaya"] = round(d["total"] - d["paid"], 2)
@@ -753,12 +757,12 @@ def cash_book(date: str = "", shop_id: int = Depends(shop_of)):
 @app.post("/api/cash")
 def add_cash(b: CashIn, shop_id: int = Depends(shop_of)):
     if b.kind not in ("in", "out"):
-        raise HTTPException(400, "kind in ya out ho")
+        raise HTTPException(400, "kind must be 'in' or 'out'")
     conn = get_db()
     try:
         conn.execute(
             "INSERT INTO cash_txns(shop_id,date,kind,amount,category,note) VALUES (?,?,?,?,?,?)",
-            (shop_id, b.date or today(), b.kind, b.amount, b.category or ("kharcha" if b.kind == "out" else "aamad"),
+            (shop_id, b.date or today(), b.kind, b.amount, b.category or ("expense" if b.kind == "out" else "income"),
              b.note))
         conn.commit()
         return {"ok": True}
@@ -778,7 +782,7 @@ def dashboard(shop_id: int = Depends(shop_of)):
         kharid = conn.execute("SELECT COALESCE(SUM(total),0) FROM purchases WHERE shop_id=? AND date=?",
                               (shop_id, t)).fetchone()[0]
         expense = conn.execute(
-            "SELECT COALESCE(SUM(amount),0) FROM cash_txns WHERE shop_id=? AND date=? AND kind='out' AND category='kharcha'",
+            "SELECT COALESCE(SUM(amount),0) FROM cash_txns WHERE shop_id=? AND date=? AND kind='out' AND category='expense'",
             (shop_id, t)).fetchone()[0]
         lena = conn.execute(
             """SELECT COALESCE(SUM(b.total - b.paid),0) - COALESCE(
@@ -865,7 +869,7 @@ def profit_report(from_date: str, to_date: str = "", shop_id: int = Depends(shop
 
 @app.get("/api/reports/stock")
 def stock_report(shop_id: int = Depends(shop_of)):
-    """Stock report: har product ka stock, kharid value, farokht value."""
+    """Stock report: per-product stock, purchase value, sale value."""
     conn = get_db()
     try:
         rows = conn.execute(
@@ -891,9 +895,9 @@ def stock_report(shop_id: int = Depends(shop_of)):
 
 @app.get("/api/reports/outstanding")
 def outstanding_report(type: str = "customer", shop_id: int = Depends(shop_of)):
-    """Udhaar report: kin parties se lena / ko dena hai, zyada se kam."""
+    """Outstanding report: who owes / is owed, highest first."""
     if type not in ("customer", "supplier"):
-        raise HTTPException(400, "type customer ya supplier ho")
+        raise HTTPException(400, "type must be customer or supplier")
     conn = get_db()
     try:
         rows = conn.execute("SELECT * FROM parties WHERE shop_id=? AND type=? ORDER BY name",
@@ -915,7 +919,7 @@ def outstanding_report(type: str = "customer", shop_id: int = Depends(shop_of)):
 
 @app.get("/api/reports/expenses")
 def expenses_report(from_date: str, to_date: str = "", shop_id: int = Depends(shop_of)):
-    """Kharchay report: category-wise kharcha."""
+    """Expenses report: category-wise expenses."""
     to_date = to_date or today()
     conn = get_db()
     try:
@@ -935,7 +939,7 @@ def expenses_report(from_date: str, to_date: str = "", shop_id: int = Depends(sh
 
 @app.get("/api/reports/daybook")
 def daybook(date: str = "", shop_id: int = Depends(shop_of)):
-    """Day Book: din bhar ke tamam len-den ek jaga."""
+    """Day Book: all of the day\u2019s transactions in one place."""
     d = date or today()
     conn = get_db()
     try:
@@ -948,20 +952,20 @@ def daybook(date: str = "", shop_id: int = Depends(shop_of)):
         for r in conn.execute(
                 "SELECT bill_no AS ref, party_name AS name, total AS amount FROM purchases WHERE shop_id=? AND date=?",
                 (shop_id, d)).fetchall():
-            items.append({"kind": "purchase", "ref": r["ref"], "tafseel": f"Kharid {r['ref']}" + (f" — {r['name']}" if r["name"] else ""),
+            items.append({"kind": "purchase", "ref": r["ref"], "tafseel": f"Purchase {r['ref']}" + (f" — {r['name']}" if r["name"] else ""),
                           "amount": r["amount"], "date": d})
         for r in conn.execute(
                 """SELECT p.amount, p.direction, p.note, pt.name FROM payments p
                    JOIN parties pt ON pt.id=p.party_id WHERE p.shop_id=? AND p.date=?""",
                 (shop_id, d)).fetchall():
             items.append({"kind": "payment", "ref": "", "tafseel":
-                          f"{'Wasooli' if r['direction'] == 'lena' else 'Adaigi'} — {r['name']}" + (f" ({r['note']})" if r["note"] else ""),
+                          f"{'Collection' if r['direction'] == 'lena' else 'Payment'} — {r['name']}" + (f" ({r['note']})" if r["note"] else ""),
                           "amount": r["amount"], "date": d})
         for r in conn.execute(
                 "SELECT kind, category, note, amount FROM cash_txns WHERE shop_id=? AND date=? AND ref NOT LIKE 'bill:%' AND ref NOT LIKE 'purchase:%' AND ref NOT LIKE 'party:%' AND ref NOT LIKE 'adjust:%'",
                 (shop_id, d)).fetchall():
             items.append({"kind": "cash_" + r["kind"], "ref": "",
-                          "tafseel": f"{'Cash In' if r['kind'] == 'in' else 'Kharcha'} — {r['note'] or r['category']}",
+                          "tafseel": f"{'Cash In' if r['kind'] == 'in' else 'Expense'} — {r['note'] or CAT_LABELS.get(r['category'], r['category'])}",
                           "amount": r["amount"], "date": d})
         return {"date": d, "items": items, "count": len(items)}
     finally:
@@ -995,6 +999,6 @@ def startup():
             subprocess.run([sys.executable, _os.path.join(here, "seed.py")],
                            check=True, timeout=180, cwd=here,
                            capture_output=True, text=True)
-            print("auto-seed ho gaya")
+            print("auto-seed done")
     except Exception as e:
         print("auto-seed skip:", e)
