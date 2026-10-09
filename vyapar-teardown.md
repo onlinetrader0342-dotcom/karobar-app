@@ -86,7 +86,29 @@ bottom user sync card `#12181f` with green `#08bd7c` "sync on" text.
 - **Settings:** sectioned forms, `#e6e6ea` textarea backgrounds
 - **Transaction pages:** `#f7f7f7` page bg, white content cards
 
-## 5. What Karobar adopted (2026-10-09)
+## 5. vyapar.com feature checklist vs Karobar (2026-10-09)
+
+Source: vyapar.com official feature list.
+
+| # | Vyapar feature | Karobar status |
+|---|---|---|
+| 1 | Send Estimates & Quotations | ✅ Done (estimates + convert to bill) |
+| 2 | Track Orders (sale/purchase orders) | ❌ Missing → GOAL.md "baqi" (Phase 2) |
+| 3 | Invoice Themes (12 themes) | ❌ Missing → GOAL.md "baqi" (Phase 2) |
+| 4 | Record Expenses | ✅ Done |
+| 5 | Receivables & Payables | ✅ Done (Ledger) |
+| 6 | Delivery Challan | ✅ **Added 2026-10-09** (create/list/print/WhatsApp/convert-to-bill) |
+| 7 | Bank Accounts | ✅ **Added 2026-10-09** (accounts + deposit/withdraw + balance) |
+| 8 | Business Reports (37+) | ⚠️ Partial (7 reports: dashboard, sales, profit, stock, outstanding, expenses, daybook) |
+| 9 | Automatic Data Backup | ⚠️ Partial (DB file; Render disk ephemeral — persistent disk Phase 2) |
+| 10 | GST Invoicing | N/A — Pakistan, no GST by design |
+| 11 | Online Store | ❌ Missing → Phase 3 |
+| 12 | Thermal Printer | ⚠️ Partial (print CSS exists) |
+| 13 | Multi-language / Multi-currency | N/A — English + PKR by design |
+| 14 | Payment Reminders (WhatsApp) | ✅ **Added 2026-10-09** (per-customer + Remind-All via WhatsApp) |
+| 15 | POS / Quick Billing | ✅ Done (quick actions) |
+
+## 6. What Karobar adopted (2026-10-09)
 
 - Primary `#0b8fc5` / dark `#097aa8` (was teal) — matches Vyapar Desktop
 - Roboto font stack (system-loaded; their woff files NOT copied)
