@@ -2129,6 +2129,34 @@ def stock_report(shop_id: int = Depends(shop_of)):
         conn.close()
 
 
+@app.get("/api/reports/item-ledger")
+def item_ledger(product_id: int, shop_id: int = Depends(shop_of)):
+    """Item ledger: maal kahan se aaya (supplier-wise purchases), kahan gaya (party-wise sales), kitna bacha."""
+    conn = get_db()
+    try:
+        p = conn.execute(
+            "SELECT id, name, sku, unit, stock_qty, purchase_price, sale_price FROM products "
+            "WHERE id=? AND shop_id=?", (product_id, shop_id)).fetchone()
+        if not p:
+            raise HTTPException(404, "Item not found")
+        ins = conn.execute(
+            """SELECT pu.date, pu.bill_no, pu.party_name, pi.qty, pi.price, pi.total
+               FROM purchase_items pi JOIN purchases pu ON pu.id=pi.purchase_id
+               WHERE pu.shop_id=? AND pi.product_id=? ORDER BY pu.date, pu.id""",
+            (shop_id, product_id)).fetchall()
+        outs = conn.execute(
+            """SELECT b.date, b.bill_no, b.party_name, bi.qty, bi.price, bi.total
+               FROM bill_items bi JOIN bills b ON b.id=bi.bill_id
+               WHERE b.shop_id=? AND bi.product_id=? ORDER BY b.date, b.id""",
+            (shop_id, product_id)).fetchall()
+        total_in = round(sum(r["qty"] for r in ins), 2)
+        total_out = round(sum(r["qty"] for r in outs), 2)
+        return {"product": dicts([p])[0], "purchases": dicts(ins), "sales": dicts(outs),
+                "total_in": total_in, "total_out": total_out, "in_stock": p["stock_qty"]}
+    finally:
+        conn.close()
+
+
 @app.get("/api/reports/outstanding")
 def outstanding_report(type: str = "customer", shop_id: int = Depends(shop_of)):
     """Outstanding report: who owes / is owed, highest first."""
@@ -2353,7 +2381,7 @@ def _xlsx_sheet(wb, title: str, headers: list, rows: list):
 
 @app.get("/api/reports/export")
 def export_report(kind: str = "sale", from_date: str = "", to_date: str = "",
-                  shop_id: int = Depends(shop_of)):
+                  product_id: int = 0, shop_id: int = Depends(shop_of)):
     """Kisi bhi report ka Excel (.xlsx) download."""
     from openpyxl import Workbook
     conn = get_db()
@@ -2409,6 +2437,29 @@ def export_report(kind: str = "sale", from_date: str = "", to_date: str = "",
             _xlsx_sheet(wb, "Profit", ["Bill", "Date", "Product", "Qty", "Price", "Total", "Cost", "Profit"],
                         [[r["bill_no"], r["date"], r["product_name"], r["qty"], r["price"],
                           r["total"], r["cost"], r["profit"]] for r in rows])
+        elif kind == "itemledger" and product_id:
+            p = conn.execute("SELECT name, sku, unit, stock_qty FROM products WHERE id=? AND shop_id=?",
+                             (product_id, shop_id)).fetchone()
+            pname = p["name"] if p else f"#{product_id}"
+            ins = conn.execute(
+                """SELECT pu.date, pu.bill_no, pu.party_name, pi.qty, pi.price, pi.total
+                   FROM purchase_items pi JOIN purchases pu ON pu.id=pi.purchase_id
+                   WHERE pu.shop_id=? AND pi.product_id=? ORDER BY pu.date, pu.id""",
+                (shop_id, product_id)).fetchall()
+            outs = conn.execute(
+                """SELECT b.date, b.bill_no, b.party_name, bi.qty, bi.price, bi.total
+                   FROM bill_items bi JOIN bills b ON b.id=bi.bill_id
+                   WHERE b.shop_id=? AND bi.product_id=? ORDER BY b.date, b.id""",
+                (shop_id, product_id)).fetchall()
+            _xlsx_sheet(wb, "Purchases (In)",
+                        ["Date", "Bill No", "Supplier", "Qty", "Price", "Total"],
+                        [[r["date"], r["bill_no"], r["party_name"], r["qty"], r["price"], r["total"]] for r in ins])
+            _xlsx_sheet(wb, "Sales (Out)",
+                        ["Date", "Bill No", "Party", "Qty", "Price", "Total"],
+                        [[r["date"], r["bill_no"], r["party_name"], r["qty"], r["price"], r["total"]] for r in outs])
+            _xlsx_sheet(wb, "Summary", ["Item", "Total In", "Total Out", "In Stock"],
+                        [[pname, sum(r["qty"] for r in ins), sum(r["qty"] for r in outs),
+                          p["stock_qty"] if p else 0]])
         else:
             raise HTTPException(400, "Unknown report kind")
         return _xlsx_response(wb, f"karobar_{kind}_report.xlsx")
