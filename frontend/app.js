@@ -2105,7 +2105,7 @@ async function loadKharchay() {
 
 /* ================= REPORTS ================= */
 let REP_SUB = "sale", REP_FROM = todayISO(), REP_TO = todayISO(), OUT_TYPE = "customer", DB_DATE = todayISO();
-const REP_TABS = [["sale", "Sale"], ["profit", "Profit"], ["billprofit", "Bill Profit"], ["stock", "Stock"], ["outstanding", "Outstanding"], ["aging", "Aging"], ["cashflow", "Cash Flow"], ["daybook", "Day Book"], ["movement", "Fast/Slow"], ["balancesheet", "Balance Sheet"]];
+const REP_TABS = [["sale", "Sale"], ["profit", "Profit"], ["billprofit", "Bill Profit"], ["stock", "Stock"], ["itemledger", "Item Ledger"], ["outstanding", "Outstanding"], ["aging", "Aging"], ["cashflow", "Cash Flow"], ["daybook", "Day Book"], ["movement", "Fast/Slow"], ["balancesheet", "Balance Sheet"]];
 RENDER["v-reports"] = async () => {
   const v = $("v-reports");
   v.innerHTML = `
@@ -2172,6 +2172,21 @@ async function loadReportSub() {
           <tr><th>Product</th><th class="num">Stock</th><th class="num">Purchase</th><th class="num">Sale</th><th class="num">Value (cost)</th></tr>
           ${r.items.map((i) => `<tr${i.stock_qty <= i.low_stock_level ? ' style="background:#fef3c7"' : ""}><td>${esc(i.name)}${i.sku ? "<br><span style='font-size:11px;color:#6b7280'>" + esc(i.sku) + "</span>" : ""}</td><td class="num">${i.stock_qty}</td><td class="num">${rs(i.purchase_price)}</td><td class="num">${rs(i.sale_price)}</td><td class="num">${rs(i.stock_value_cost)}</td></tr>`).join("")}
         </table></div></div>`;
+    } else if (REP_SUB === "itemledger") {
+      if (!window._ilProducts) {
+        try { window._ilProducts = await api("/products?limit=1000"); } catch (e) { window._ilProducts = []; }
+      }
+      const prods = window._ilProducts || [];
+      out.innerHTML = `
+        <div class="card"><h3>Item Ledger</h3>
+          <label class="f">Item</label>
+          <input id="il-item" list="il-list" placeholder="Item ka naam likho…" value="${esc(window._ilName || "")}">
+          <datalist id="il-list">${prods.map((p) => `<option data-id="${p.id}" value="${esc(p.name)}">`).join("")}</datalist>
+          <div class="row" style="margin-top:8px">
+            <button class="btn sm primary" onclick="showItemLedger()">Show</button>
+          </div></div>
+        <div id="il-out"></div>`;
+      if (window._ilPid) showItemLedger();
     } else if (REP_SUB === "outstanding") {
       const r = await api("/reports/outstanding?type=" + OUT_TYPE);
       out.innerHTML = `
@@ -2272,6 +2287,49 @@ async function exportXlsx(kind) {
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = `karobar_${kind}_report.xlsx`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  } catch (e) { toast(e.message); }
+}
+
+async function showItemLedger() {
+  const out = $("il-out");
+  const name = ($("il-item").value || "").trim().toLowerCase();
+  const prods = window._ilProducts || [];
+  const p = prods.find((x) => (x.name || "").toLowerCase() === name)
+         || prods.find((x) => (x.name || "").toLowerCase().includes(name));
+  if (!p) { out.innerHTML = `<div class="card err">Item nahi mila — list me se chun kar likho.</div>`; return; }
+  window._ilPid = p.id; window._ilName = p.name;
+  out.innerHTML = `<div class="card">Loading…</div>`;
+  try {
+    const r = await api(`/reports/item-ledger?product_id=${p.id}`);
+    const tbl = (rows, cols) => rows.length
+      ? `<div style="overflow-x:auto"><table class="tbl"><tr>${cols.map((c) => `<th${c.n ? ' class="num"' : ""}>${c.t}</th>`).join("")}</tr>` +
+        rows.map((x) => `<tr>${cols.map((c) => `<td${c.n ? ' class="num"' : ""}>${c.f(x)}</td>`).join("")}</tr>`).join("") + `</table></div>`
+      : `<div style="color:#6b7280;font-size:13px">Koi record nahi</div>`;
+    const cols = [
+      {t: "Date"}, {t: "Bill No", f: (x) => esc(x.bill_no)},
+      {t: "Party", f: (x) => esc(x.party_name || "—")},
+      {t: "Qty", n: 1, f: (x) => x.qty}, {t: "Price", n: 1, f: (x) => rs(x.price)},
+    ].map((c) => ({...c, f: c.f || ((x) => esc(x.date))}));
+    out.innerHTML = `
+      <div class="card"><h3>${esc(r.product.name)}</h3>
+        <button class="btn sm ghost" onclick="exportItemLedger(${p.id})">⬇ Excel</button>
+        <div class="kv"><span>Maal aaya (total purchase)</span><b class="val green">${r.total_in}</b></div>
+        <div class="kv"><span>Maal gaya (total sale)</span><b class="val red">${r.total_out}</b></div>
+        <div class="kv"><span><b>Ab stock me hai</b></span><b>${r.in_stock} ${esc(r.product.unit || "")}</b></div></div>
+      <div class="card"><h3>Kahan se aaya (Purchases)</h3>${tbl(r.purchases, cols)}</div>
+      <div class="card"><h3>Kahan gaya (Sales)</h3>${tbl(r.sales, cols)}</div>`;
+  } catch (e) { out.innerHTML = `<div class="card err">${esc(e.message)}</div>`; }
+}
+async function exportItemLedger(pid) {
+  try {
+    const r = await fetch(`/api/reports/export?kind=itemledger&product_id=${pid}`, {headers: authHeaders()});
+    if (!r.ok) throw new Error("Export failed");
+    const blob = await r.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `karobar_item_ledger.xlsx`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   } catch (e) { toast(e.message); }
