@@ -1,6 +1,6 @@
 /* Karobar — Vyapar mobile design language (from Azhar's real screenshots)
    bg #e9eff6, white cards radius 16, crimson #e63956 FAB,
-   nav blue #1a9bd4, badges, segmented pills.
+   brand purple #7c3aed, badges, segmented pills.
    English UI, PKR (Rs), no GST. */
 :root {
   --bg: #e9eff6;
@@ -11,9 +11,9 @@
   --line: #e3e9f2;
   --crimson: #e63956;
   --crimson-dark: #c92644;
-  --blue: #1a9bd4;
-  --blue-dark: #1280b3;
-  --blue-soft: #e3f2fd;
+  --blue: #7c3aed;   /* BRAND PRIMARY — poori app ka colour; badalna ho to SIRF yeh line */
+  --blue-dark: #6d28d9;
+  --blue-soft: #ede9fe;
   --green: #1db954;
   --green-soft: #dcf7e7;
   --orange: #ef7d1a;
